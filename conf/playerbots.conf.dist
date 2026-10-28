@@ -1678,6 +1678,51 @@ AiPlayerbot.CoaBodyPullGuard = 1
 # Default: 1 (enabled)
 AiPlayerbot.CoaChaseLeash = 1
 
+# Out-of-combat RPG destinations (grind areas, camps, quest objectives, city buildings, NPCs) are
+# a spot drawn around the real point of interest instead of the point itself: dense near it,
+# thinning outward, at least 1 yard from the last spot another bot took and spread to a wider
+# ring when it is crowded. Bots gather at vendors and quest hubs without sharing a coordinate.
+# Default: 1 (enabled)
+AiPlayerbot.CoaCrowdSpots = 1
+
+# Bots stand for a varied time at a destination (long-tailed, mostly seconds, sometimes minutes),
+# wait between pacing hops, leave a few seconds apart when sent by the same trigger, and vary how
+# long a wander status lasts, so groups of bots no longer act in step.
+# Default: 1 (enabled)
+AiPlayerbot.CoaDwell = 1
+
+# Small human cues while a bot stands at a destination: turn to face the NPC it is talking to,
+# an occasional emote, a hop in place, and walking short hops instead of always running.
+# Default: 1 (enabled)
+AiPlayerbot.CoaPolish = 1
+
+# RPG ground moves are launched as a smooth curve through the navmesh path with a slight sideways
+# offset on some points, instead of a straight-edged polyline that every bot walks identically.
+# Moves that fly, swim, ride a vehicle, start indoors or are too short stay on the stock path.
+# Costs about three times the bytes of a plain move to each player who sees the bot.
+# Default: 1 (enabled)
+AiPlayerbot.CoaSmoothPaths = 1
+
+# Bots choose which NPC, inn, bank or grind area to visit by how busy it is and where they have just
+# been, instead of at random among the nearest few. Auction houses, banks, inns, flight masters and
+# battlemasters keep their crowds; vendors, trainers, quest givers and grind areas spread bots out.
+# Wandering bots move between the grind areas of their zone. 0 = the stock uniform choice.
+# Default: 1 (enabled)
+AiPlayerbot.CoaTargetSpread = 1
+
+# On trips over 80 yards a bot now and then stops, looks around and steps aside for a few seconds,
+# on average once per this many yards run. Never in combat, mounted, in a city, below half health
+# or near hostile creatures. Needs AiPlayerbot.CoaDwell, and AiPlayerbot.CoaSmoothPaths or
+# AiPlayerbot.CoaPolish (with both of those off, moves use the stock path, which is never cut). 0 = never.
+# Default: 400
+AiPlayerbot.CoaRoutePauseYards = 400
+
+# Seconds between "coa movement" summary lines in the server log (spots picked, overlap, curve
+# launches, dwell, time spent). 0 = no lines. Use together with "playerbots pmon" to compare
+# the cost with every Coa movement key set to 0.
+# Default: 60
+AiPlayerbot.CoaMovementMetricsSeconds = 60
+
 # In a party of five, ranged damage dealers and healers stand behind the living tank (next to
 # the healer when it is already back there), step back when they end up on the mob's side,
 # and melee close on the tank's side of the mob. Follow between pulls uses the same spot. Works

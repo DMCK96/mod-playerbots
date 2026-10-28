@@ -8,6 +8,7 @@
 #define PLAYERBOTS_NEWRPGINFO_H
 
 #include "Define.h"
+#include "HumanMovementRules.h"
 #include "ObjectGuid.h"
 #include "ObjectMgr.h"
 #include "QuestDef.h"
@@ -37,11 +38,16 @@ struct NewRpgInfo
     {
         ObjectGuid npcOrGo{};
         uint32 lastReach{0};
+        uint32 stayMs{0};
+        WorldPosition spot{};
     };
     // RPG_WANDER_RANDOM
     struct WanderRandom
     {
-        WanderRandom() = default;
+        HumanMovementRules::TargetKey place{HumanMovementRules::NoTarget};
+        WorldPosition spot{};
+        uint32 arrivedAt{0};
+        uint32 stayMs{0};
     };
     // RPG_DO_QUEST
     struct DoQuest
@@ -85,11 +91,15 @@ struct NewRpgInfo
     uint32 cityStayMs{0};
     WorldPosition cityReturnPos{};
 
+    // NPCs and places visited last, so the next choice prefers somewhere else.
+    HumanMovementRules::RecentTargets recentTargets;
+
     // MOVE_FAR
     float nearestMoveFarDis{FLT_MAX};
     uint32 stuckTs{0};
     uint32 stuckAttempts{0};
     WorldPosition moveFarPos;
+    WorldPosition pausePos{};  // end of a leg cut short for a route pause
     // END MOVE_FAR
 
     using RpgData = std::variant<

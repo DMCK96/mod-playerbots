@@ -12,8 +12,11 @@
 #include "GameObject.h"
 #include "GossipDef.h"
 #include "GridTerrainData.h"
+#include "HumanMovement.h"
 #include "IVMapMgr.h"
 #include "LFGMgr.h"
+#include "MoveSpline.h"
+#include "MoveSplineInit.h"
 #include "NewRpgInfo.h"
 #include "NewRpgStrategy.h"
 #include "Object.h"
@@ -67,6 +70,9 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
         return false;
     }
 
+    if (TakeRoutePause())
+        return true;
+
     // Let previously committed movement finish before recomputing.
     //
     // MoveTo internally caps its stored delay at maxWaitForMove
@@ -90,7 +96,7 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
         if (bot->isMoving() && lastMove.lastMoveToMapId == bot->GetMapId())
         {
             float remaining = bot->GetExactDist(lastMove.lastMoveToX, lastMove.lastMoveToY, lastMove.lastMoveToZ);
-            if (remaining > 10.0f)
+            if (remaining > 10.0f || botAI->rpgInfo.pausePos != WorldPosition())
                 return true;
         }
     }
@@ -126,11 +132,16 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
         return bot->TeleportTo(dest);
     }
 
+    // Trips can outlast a claim: each leg keeps the bot counted at the target it is heading to.
+    if (sPlayerbotAIConfig.coaTargetSpread)
+        HumanMovement::RefreshTarget(bot);
+
     float dis = bot->GetExactDist(dest);
     if (dis < pathFinderDis)
     {
-        return MoveTo(dest.GetMapId(), dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ(), false, false,
-                      false, true);
+        return MoveHumanTo(dest.GetMapId(), dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ(),
+                           MovementPriority::MOVEMENT_NORMAL,
+                           RoutePauseChance(dest, dest.GetPositionX(), dest.GetPositionY()));
     }
 
     const uint32 typeOk = PATHFIND_NORMAL | PATHFIND_INCOMPLETE | PATHFIND_FARFROMPOLY;
@@ -161,7 +172,8 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
             float endDistToDest = dest.GetExactDist(endPos.x, endPos.y, endPos.z);
             if (endDistToDest + 5.0f < disToDest)
             {
-                return MoveTo(bot->GetMapId(), endPos.x, endPos.y, endPos.z, false, false, false, true);
+                return MoveHumanTo(bot->GetMapId(), endPos.x, endPos.y, endPos.z, MovementPriority::MOVEMENT_NORMAL,
+                                   RoutePauseChance(dest, endPos.x, endPos.y));
             }
         }
     }
@@ -203,12 +215,13 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
     }
     if (found)
     {
-        return MoveTo(bot->GetMapId(), rx, ry, rz, false, false, false, true);
+        return MoveHumanTo(bot->GetMapId(), rx, ry, rz, MovementPriority::MOVEMENT_NORMAL,
+                           RoutePauseChance(dest, rx, ry));
     }
     return false;
 }
 
-bool NewRpgBaseAction::MoveWorldObjectTo(ObjectGuid guid, float distance)
+bool NewRpgBaseAction::MoveWorldObjectTo(ObjectGuid guid, float distance, WorldPosition* spot)
 {
     if (IsWaitingForLastMove(MovementPriority::MOVEMENT_NORMAL))
     {
@@ -222,6 +235,18 @@ bool NewRpgBaseAction::MoveWorldObjectTo(ObjectGuid guid, float distance)
     float y = object->GetPositionY();
     float z = object->GetPositionZ();
     float mapId = object->GetMapId();
+
+    if (sPlayerbotAIConfig.coaCrowdSpots && spot)
+    {
+        if (*spot == WorldPosition())
+            *spot = HumanMovement::PickSpotNear(bot, bot->GetMap(), WorldPosition(object),
+                                                HumanMovement::SpotKind::Npc, distance * 0.9f);
+        if (MoveHumanTo(spot->GetMapId(), spot->GetPositionX(), spot->GetPositionY(), spot->GetPositionZ()))
+            return true;
+        *spot = WorldPosition();
+        return false;
+    }
+
     float angle = 0.f;
 
     if (!object->ToUnit() || !object->ToUnit()->isMoving())
@@ -240,7 +265,7 @@ bool NewRpgBaseAction::MoveWorldObjectTo(ObjectGuid guid, float distance)
         y = object->GetPositionY();
         z = object->GetPositionZ();
     }
-    return MoveTo(mapId, x, y, z, false, false, false, true);
+    return MoveHumanTo(mapId, x, y, z);
 }
 
 bool NewRpgBaseAction::MoveRandomNear(float moveStep, MovementPriority priority, WorldObject*)
@@ -280,12 +305,190 @@ bool NewRpgBaseAction::MoveRandomNear(float moveStep, MovementPriority priority,
         if (map->IsInWater(bot->GetPhaseMask(), dx, dy, dz, bot->GetCollisionHeight()))
             continue;
 
-        bool moved = MoveTo(bot->GetMapId(), dx, dy, dz, false, false, false, true, priority);
+        bool moved = MoveHumanTo(bot->GetMapId(), dx, dy, dz, priority);
         if (moved)
             return true;
     }
 
     return false;
+}
+
+bool NewRpgBaseAction::MoveHumanTo(uint32 mapId, float x, float y, float z, MovementPriority priority,
+                                   float pauseChance)
+{
+    auto const stock = [&]() { return MoveTo(mapId, x, y, z, false, false, false, true, priority); };
+
+    if ((!sPlayerbotAIConfig.coaSmoothPaths && !sPlayerbotAIConfig.coaPolish) || mapId != bot->GetMapId() ||
+        bot->IsFlying() || bot->isSwimming() || bot->GetVehicle() || bot->HasUnitMovementFlag(MOVEMENTFLAG_WATERWALKING))
+        return stock();
+
+    UpdateMovementState();
+    if (!IsMovingAllowed() || IsDuplicateMove(x, y, z) || IsWaitingForLastMove(priority))
+        return false;
+    if (priority <= MovementPriority::MOVEMENT_NORMAL && IsBodyPullRisk(x, y, z))
+        return false;
+
+    {
+        HumanMovement::CostTimer timer(HumanMovement::CostSlotLaunch);
+        PathGenerator gen(bot);
+        gen.CalculatePath(x, y, z);
+        uint32 const blocked = PATHFIND_NOPATH | PATHFIND_NOT_USING_PATH | PATHFIND_SHORTCUT;
+        Movement::PointsArray const& raw = gen.GetPath();
+        if (!(gen.GetPathType() & blocked) && raw.size() >= 3)
+        {
+            Movement::PointsArray curved;
+            bool smooth = HumanMovement::Humanize(bot, raw, curved);
+            Movement::PointsArray const* launch = smooth ? &curved : &raw;
+            Movement::PointsArray shortened;
+            if (pauseChance > 0.0f && rand_norm() < pauseChance)
+            {
+                size_t const cut = HumanMovementRules::PauseCutIndex(launch->size(), float(rand_norm()));
+                if (cut)
+                {
+                    shortened.assign(launch->begin(), launch->begin() + cut + 1);
+                    launch = &shortened;
+                    smooth = smooth && shortened.size() >= 5;
+                    G3D::Vector3 const& stop = shortened.back();
+                    botAI->rpgInfo.pausePos = WorldPosition(mapId, stop.x, stop.y, stop.z);
+                }
+            }
+            Movement::PointsArray const& points = *launch;
+
+            bot->GetMotionMaster()->Clear();
+            if (bot->IsSitState())
+                bot->SetStandState(UNIT_STAND_STATE_STAND);
+            if (!bot->IsStopped())
+                bot->StopMoving();
+
+            Movement::MoveSplineInit init(bot);
+            init.MovebyPath(points);
+            if (smooth)
+                init.SetSmooth();
+            if (sPlayerbotAIConfig.coaPolish && gen.getPathLength() < 20.0f && HumanMovement::Chance(40))
+                init.SetWalk(true);
+            int32 const duration = init.Launch();
+            if (duration > 0)
+            {
+                HumanMovement::NoteSmoothLaunch(smooth);
+                G3D::Vector3 const& end = points.back();
+                float const delay = std::min(float(duration), float(sPlayerbotAIConfig.maxWaitForMove));
+                AI_VALUE(LastMovement&, "last movement")
+                    .Set(mapId, end.x, end.y, end.z, bot->GetOrientation(), delay, priority);
+                return true;
+            }
+        }
+    }
+    return stock();
+}
+
+float NewRpgBaseAction::RoutePauseChance(WorldPosition const& dest, float legX, float legY)
+{
+    uint32 const yards = sPlayerbotAIConfig.coaRoutePauseYards;
+    if (!sPlayerbotAIConfig.coaDwell || !yards)
+        return 0.0f;
+    float const chance = HumanMovementRules::PauseChance(bot->GetExactDist(dest), bot->GetExactDist2d(legX, legY),
+                                                         yards);
+    if (chance <= 0.0f || bot->IsInCombat() || bot->IsMounted() || bot->IsFlying() || bot->isSwimming() ||
+        bot->GetVehicle() || bot->GetHealthPct() < 50.0f)
+        return 0.0f;
+    if (AreaTableEntry const* zone = sAreaTableStore.LookupEntry(bot->GetZoneId()))
+        if (zone->flags & AREA_FLAG_CAPITAL)
+            return 0.0f;
+    for (ObjectGuid const& guid : AI_VALUE(GuidVector, "nearest hostile npcs"))
+    {
+        Unit* unit = botAI->GetUnit(guid);
+        if (unit && unit->IsAlive() && unit->IsHostileTo(bot) && bot->GetDistance(unit) < 30.0f)
+            return 0.0f;
+    }
+    return chance;
+}
+
+bool NewRpgBaseAction::TakeRoutePause()
+{
+    NewRpgInfo& info = botAI->rpgInfo;
+    if (info.pausePos == WorldPosition() || bot->isMoving())
+        return false;
+    WorldPosition const stop = info.pausePos;
+    info.pausePos = WorldPosition();
+    if (bot->GetExactDist(stop) > 3.0f)
+        return false;
+
+    // A pause is not lack of progress.
+    info.stuckTs = getMSTime();
+    info.stuckAttempts = 0;
+
+    float const facing = bot->GetOrientation();
+    bool stepped = false;
+    if (HumanMovement::Chance(35))
+    {
+        float const side = facing + (urand(0, 1) ? 0.5f : -0.5f) * float(M_PI);
+        float const step = frand(1.0f, 3.0f);
+        float const sx = bot->GetPositionX() + step * std::cos(side);
+        float const sy = bot->GetPositionY() + step * std::sin(side);
+        float const sz = bot->GetMapHeight(sx, sy, bot->GetPositionZ() + 1.0f);
+        if (sz > INVALID_HEIGHT && std::fabs(sz - bot->GetPositionZ()) <= 1.2f &&
+            !bot->GetMap()->IsInWater(bot->GetPhaseMask(), sx, sy, sz, bot->GetCollisionHeight()))
+            stepped = MoveHumanTo(bot->GetMapId(), sx, sy, sz);
+    }
+    if (!stepped)
+        bot->SetFacingTo(HumanMovement::Chance(60) ? frand(0.0f, 2.0f * float(M_PI)) : facing + float(M_PI));
+
+    HumanMovement::NotePause();
+    return ForceToWait(HumanMovement::DwellMs(1500, 3000, 6000));
+}
+
+bool NewRpgBaseAction::LingerNear(float moveStep)
+{
+    if (!sPlayerbotAIConfig.coaDwell)
+        return MoveRandomNear(moveStep);
+    if (IsWaitingForLastMove(MovementPriority::MOVEMENT_NORMAL))
+        return false;
+    if (!bot->isMoving() && HumanMovement::Chance(70))
+    {
+        uint32 const ms = HumanMovement::DwellMs(2000, 5000, 20000);
+        HumanMovement::NoteDwell(ms);
+        StandCues();
+        return ForceToWait(ms);
+    }
+    return MoveRandomNear(moveStep);
+}
+
+void NewRpgBaseAction::StandCues(WorldObject* facing)
+{
+    if (!sPlayerbotAIConfig.coaPolish || bot->IsInCombat() || bot->isMoving() || !bot->IsAlive() || bot->IsMounted())
+        return;
+
+    if (facing)
+        bot->SetFacingToObject(facing);
+
+    uint32 const roll = urand(0, 99);
+    if (roll < 15)
+    {
+        static constexpr uint32 NpcEmotes[] = {EMOTE_ONESHOT_TALK, EMOTE_ONESHOT_WAVE, EMOTE_ONESHOT_BOW,
+                                               EMOTE_ONESHOT_YES};
+        static constexpr uint32 IdleEmotes[] = {EMOTE_ONESHOT_LAUGH, EMOTE_ONESHOT_CHEER, EMOTE_ONESHOT_POINT,
+                                                EMOTE_ONESHOT_NO};
+        bot->HandleEmoteCommand(facing ? NpcEmotes[urand(0, 3)] : IdleEmotes[urand(0, 3)]);
+        HumanMovement::NoteEmote();
+    }
+    else if (roll < 25 && !facing)
+    {
+        bot->SetFacingTo(frand(0.0f, 2.0f * float(M_PI)));
+    }
+    else if (roll < 30 && !bot->IsSitState())
+    {
+        float const angle = bot->GetOrientation();
+        float const hx = bot->GetPositionX() + 0.8f * std::cos(angle);
+        float const hy = bot->GetPositionY() + 0.8f * std::sin(angle);
+        float const hz = bot->GetMapHeight(hx, hy, bot->GetPositionZ() + 1.0f);
+        if (hz > INVALID_HEIGHT && std::fabs(hz - bot->GetPositionZ()) < 0.5f)
+        {
+            MotionMaster* mm = bot->GetMotionMaster();
+            mm->Clear();
+            mm->MoveJump(hx, hy, hz, 3.0f, 6.0f, 1);
+            HumanMovement::NoteHop();
+        }
+    }
 }
 
 bool NewRpgBaseAction::ForceToWait(uint32 duration, MovementPriority priority)
@@ -791,6 +994,24 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
     if (possibleTargets.empty())
         return ObjectGuid();
 
+    if (sPlayerbotAIConfig.coaTargetSpread)
+    {
+        std::vector<HumanMovement::Candidate> candidates;
+        std::vector<ObjectGuid> guids;
+        for (ObjectGuid const& guid : possibleTargets)
+        {
+            Creature* creature = ObjectAccessor::GetCreature(*bot, guid);
+            if (!creature || !creature->IsInWorld())
+                continue;
+            candidates.push_back({HumanMovement::NpcTargetKey(creature), HumanMovement::KindForNpc(creature),
+                                  WorldPosition(creature)});
+            guids.push_back(guid);
+        }
+        int32 const chosen = HumanMovement::ChooseTarget(bot, candidates, botAI->rpgInfo.recentTargets);
+        if (chosen >= 0)
+            return guids[chosen];
+    }
+
     int idx = urand(0, possibleTargets.size() - 1);
     ObjectGuid guid = possibleTargets[idx];
     WorldObject* object = ObjectAccessor::GetCreatureOrPetOrVehicle(*bot, guid);
@@ -995,6 +1216,103 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
     return true;
 }
 
+namespace
+{
+// Choice among places for the static pickers, which bound their range themselves; -1 keeps the stock uniform pick.
+int32 ChoosePlace(Player* bot, std::vector<HumanMovement::Candidate> const& candidates)
+{
+    if (!sPlayerbotAIConfig.coaTargetSpread || candidates.empty() || HumanMovement::Probing())
+        return -1;
+    static HumanMovementRules::RecentTargets const none;
+    PlayerbotAI* ai = GET_PLAYERBOT_AI(bot);
+    HumanMovementRules::RecentTargets* recent = ai ? &ai->rpgInfo.recentTargets : nullptr;
+    int32 const chosen = HumanMovement::ChooseTarget(bot, candidates, recent ? *recent : none, false);
+    if (chosen >= 0 && recent)
+        recent->Push(candidates[chosen].key);
+    return chosen;
+}
+
+template <class Location>
+std::vector<HumanMovement::Candidate> PlaceCandidates(std::vector<Location> const& locs,
+                                                      HumanMovementRules::TargetKind kind)
+{
+    std::vector<HumanMovement::Candidate> candidates;
+    candidates.reserve(locs.size());
+    for (Location const& loc : locs)
+    {
+        WorldPosition const pos(loc);
+        candidates.push_back({HumanMovement::PlaceKeyFor(pos), kind, pos});
+    }
+    return candidates;
+}
+}  // namespace
+
+bool NewRpgBaseAction::WanderBetweenPlaces()
+{
+    constexpr float PlaceRadius = 150.0f;
+    constexpr float ArriveDistance = 10.0f;
+
+    NewRpgInfo& info = botAI->rpgInfo;
+    auto* data = std::get_if<NewRpgInfo::WanderRandom>(&info.data);
+    if (!data)
+        return LingerNear(50.0f);
+
+    if (data->place == HumanMovementRules::NoTarget)
+    {
+        if (IsWaitingForLastMove(MovementPriority::MOVEMENT_NORMAL))
+            return false;
+        std::vector<WorldLocation> nearby;
+        for (WorldLocation const& loc : sTravelMgr.GetLocsPerLevelCache(bot->GetLevel()))
+        {
+            if (loc.GetMapId() != bot->GetMapId() || bot->GetExactDist(loc) > PlaceRadius)
+                continue;
+            if (bot->GetMap()->GetZoneId(bot->GetPhaseMask(), loc.GetPositionX(), loc.GetPositionY(),
+                                         loc.GetPositionZ()) != bot->GetZoneId())
+                continue;
+            nearby.push_back(loc);
+        }
+        std::vector<HumanMovement::Candidate> const candidates =
+            PlaceCandidates(nearby, HumanMovementRules::TargetKind::Place);
+        int32 const chosen = HumanMovement::ChooseTarget(bot, candidates, info.recentTargets);
+        if (chosen < 0)
+            return LingerNear(50.0f);
+
+        data->place = candidates[chosen].key;
+        data->spot = HumanMovement::PickSpotNear(bot, bot->GetMap(), candidates[chosen].pos,
+                                                 HumanMovement::SpotKind::Field);
+        data->arrivedAt = 0;
+        info.recentTargets.Push(data->place);
+    }
+
+    if (!data->arrivedAt)
+    {
+        if (bot->GetExactDist(data->spot) > ArriveDistance)
+        {
+            // Give up on a spot that makes no progress long before MoveFarTo's stuck teleport would fire.
+            if (info.moveFarPos == data->spot && info.stuckAttempts >= 3)
+            {
+                HumanMovement::ReleaseTarget(bot);
+                *data = NewRpgInfo::WanderRandom{};
+                return LingerNear(8.0f);
+            }
+            if (MoveFarTo(data->spot))
+                return true;
+            return MoveRandomNear(10.0f);
+        }
+        data->arrivedAt = getMSTime();
+        data->stayMs = HumanMovement::DwellMs(10000, 30000, 120000);
+        HumanMovement::RefreshTarget(bot);
+        return LingerNear(8.0f);
+    }
+
+    if (GetMSTimeDiffToNow(data->arrivedAt) < data->stayMs)
+        return LingerNear(8.0f);
+
+    HumanMovement::ReleaseTarget(bot);
+    *data = NewRpgInfo::WanderRandom{};
+    return false;
+}
+
 WorldPosition NewRpgBaseAction::SelectRandomGrindPos(Player* bot)
 {
     std::vector<WorldLocation> const& locs = sTravelMgr.GetLocsPerLevelCache(bot->GetLevel());
@@ -1037,16 +1355,17 @@ WorldPosition NewRpgBaseAction::SelectRandomGrindPos(Player* bot)
         }
     }
     WorldPosition dest{};
+    std::vector<WorldLocation> const* pool = nullptr;
     if (urand(1, 100) <= 50 && !hi_prepared_locs.empty())
-    {
-        uint32 idx = urand(0, hi_prepared_locs.size() - 1);
-        dest = hi_prepared_locs[idx];
-    }
+        pool = &hi_prepared_locs;
     else if (!lo_prepared_locs.empty())
+        pool = &lo_prepared_locs;
+    if (pool)
     {
-        uint32 idx = urand(0, lo_prepared_locs.size() - 1);
-        dest = lo_prepared_locs[idx];
+        int32 const chosen = ChoosePlace(bot, PlaceCandidates(*pool, HumanMovementRules::TargetKind::Place));
+        dest = (*pool)[chosen >= 0 ? uint32(chosen) : urand(0, pool->size() - 1)];
     }
+    dest = HumanMovement::PickSpotNear(bot, bot->GetMap(), dest, HumanMovement::SpotKind::Field);
     LOG_DEBUG("playerbots", "[New RPG] Bot {} select random grind pos Map:{} X:{} Y:{} Z:{} ({}+{} available in {})",
               bot->GetName(), dest.GetMapId(), dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ(),
               hi_prepared_locs.size(), lo_prepared_locs.size() - hi_prepared_locs.size(), locs.size());
@@ -1137,10 +1456,25 @@ WorldPosition NewRpgBaseAction::SelectRandomCityPos(Player* bot, char const** ci
     if (pool.empty())
         return WorldPosition();
 
-    CityPoint const* point = pool[urand(0, pool.size() - 1)];
+    int32 chosen = -1;
+    if (&pool == &nearby)
+    {
+        std::vector<HumanMovement::Candidate> candidates;
+        candidates.reserve(pool.size());
+        for (CityPoint const* option : pool)
+        {
+            WorldPosition const pos(option->mapId, option->x, option->y, option->z);
+            candidates.push_back({HumanMovement::PlaceKeyFor(pos), HumanMovementRules::TargetKind::Hub, pos});
+        }
+        chosen = ChoosePlace(bot, candidates);
+    }
+    CityPoint const* point = pool[chosen >= 0 ? uint32(chosen) : urand(0, pool.size() - 1)];
     if (city)
         *city = point->city;
     // Spread the bots around the building instead of stacking them on one spot.
+    WorldPosition const anchor(point->mapId, point->x, point->y, point->z);
+    if (sPlayerbotAIConfig.coaCrowdSpots && point->mapId == bot->GetMapId())
+        return HumanMovement::PickSpotNear(bot, bot->GetMap(), anchor, HumanMovement::SpotKind::Hub);
     float const angle = frand(0.0f, 2 * float(M_PI));
     float const radius = frand(2.0f, 8.0f);
     return WorldPosition(point->mapId, point->x + radius * std::cos(angle), point->y + radius * std::sin(angle),
@@ -1203,8 +1537,10 @@ WorldPosition NewRpgBaseAction::SelectRandomCampPos(Player* bot)
     WorldPosition dest{};
     if (!prepared_locs.empty())
     {
-        uint32 idx = urand(0, prepared_locs.size() - 1);
-        dest = prepared_locs[idx];
+        int32 const chosen = ChoosePlace(bot, PlaceCandidates(prepared_locs, HumanMovementRules::TargetKind::Hub));
+        uint32 const idx = chosen >= 0 ? uint32(chosen) : urand(0, prepared_locs.size() - 1);
+        dest = HumanMovement::PickSpotNear(bot, bot->GetMap(), WorldPosition(prepared_locs[idx]),
+                                           HumanMovement::SpotKind::Hub);
     }
     LOG_DEBUG("playerbots", "[New RPG] Bot {} select random inn keeper pos Map:{} X:{} Y:{} Z:{} ({} available in {})",
               bot->GetName(), dest.GetMapId(), dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ(),
@@ -1406,11 +1742,13 @@ bool NewRpgBaseAction::CheckRpgStatusAvailable(NewRpgStatus status)
         }
         case RPG_GO_GRIND:
         {
+            HumanMovement::ProbeOnly const probe;
             WorldPosition pos = SelectRandomGrindPos(bot);
             return pos != WorldPosition();
         }
         case RPG_GO_CAMP:
         {
+            HumanMovement::ProbeOnly const probe;
             WorldPosition pos = SelectRandomCampPos(bot);
             return pos != WorldPosition();
         }
@@ -1451,11 +1789,14 @@ bool NewRpgBaseAction::CheckRpgStatusAvailable(NewRpgStatus status)
             return SelectRandomFlightTaxiNode(flightMasterEntry, flightMasterPos, path);
         }
         case RPG_GO_CITY:
+        {
+            HumanMovement::ProbeOnly const probe;
             // A free random bot only: never one with a group, in a queue or an instance, nor a High Risk one.
             return sRandomPlayerbotMgr.IsRandomBot(bot) && !bot->GetGroup() && bot->IsAlive() && !bot->IsInCombat() &&
                    !bot->IsInFlight() && WorldPosition(bot).isOverworld() && !bot->InBattlegroundQueue() &&
                    sLFGMgr->GetState(bot->GetGUID()) == lfg::LFG_STATE_NONE && !bot->HasAura(CoaHighRiskAura) &&
                    SelectRandomCityPos(bot) != WorldPosition();
+        }
         case RPG_OUTDOOR_PVP:
         {
             if (!bot->IsPvP())

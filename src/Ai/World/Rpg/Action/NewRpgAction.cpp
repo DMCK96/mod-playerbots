@@ -10,6 +10,7 @@
 #include "ChatHelper.h"
 #include "DBCStores.h"
 #include "GossipDef.h"
+#include "HumanMovement.h"
 #include "IVMapMgr.h"
 #include "MotionMaster.h"
 #include "MoveSpline.h"
@@ -245,6 +246,24 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
 {
     NewRpgInfo& info = botAI->rpgInfo;
     NewRpgStatus status = info.GetStatus();
+    struct ReleaseOnStatusChange
+    {
+        Player* bot;
+        NewRpgInfo& info;
+        NewRpgStatus before;
+        uint32 claims;
+        ~ReleaseOnStatusChange()
+        {
+            if (info.GetStatus() != before && HumanMovement::ClaimSerial() == claims)
+                HumanMovement::ReleaseTarget(bot);
+        }
+    } const releaseOnChange{bot, info, status, HumanMovement::ClaimSerial()};
+    auto const varied = [&](uint32 base)
+    {
+        return sPlayerbotAIConfig.coaDwell
+                   ? HumanMovement::JitterMs(base, info.startT ^ uint32(bot->GetGUID().GetCounter()))
+                   : base;
+    };
     switch (status)
     {
         case RPG_IDLE:
@@ -254,8 +273,14 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
                 LeaveCity();
                 return true;
             }
-            return RandomChangeStatus({RPG_GO_CAMP, RPG_GO_GRIND, RPG_WANDER_RANDOM, RPG_WANDER_NPC, RPG_DO_QUEST,
-                                       RPG_TRAVEL_FLIGHT, RPG_REST, RPG_OUTDOOR_PVP, RPG_GO_CITY});
+        {
+            bool const changed = RandomChangeStatus({RPG_GO_CAMP, RPG_GO_GRIND, RPG_WANDER_RANDOM, RPG_WANDER_NPC,
+                                                     RPG_DO_QUEST, RPG_TRAVEL_FLIGHT, RPG_REST, RPG_OUTDOOR_PVP,
+                                                     RPG_GO_CITY});
+            if (changed && sPlayerbotAIConfig.coaDwell && info.GetStatus() != RPG_IDLE)
+                ForceToWait(HumanMovement::StartDelayMs());
+            return changed;
+        }
 
         case RPG_GO_GRIND:
         {
@@ -286,7 +311,7 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
         case RPG_WANDER_RANDOM:
         {
             // WANDER_RANDOM -> IDLE
-            if (info.HasStatusPersisted(statusWanderRandomDuration))
+            if (info.HasStatusPersisted(varied(statusWanderRandomDuration)))
             {
                 info.ChangeToIdle();
                 return true;
@@ -317,7 +342,7 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
         }
         case RPG_WANDER_NPC:
         {
-            if (info.HasStatusPersisted(info.cityStayMs ? info.cityStayMs : statusWanderNpcDuration))
+            if (info.HasStatusPersisted(info.cityStayMs ? info.cityStayMs : varied(statusWanderNpcDuration)))
             {
                 info.ChangeToIdle();
                 return true;
@@ -348,7 +373,7 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
         case RPG_REST:
         {
             // REST -> IDLE
-            if (info.HasStatusPersisted(statusRestDuration))
+            if (info.HasStatusPersisted(varied(statusRestDuration)))
             {
                 info.ChangeToIdle();
                 return true;
@@ -419,7 +444,7 @@ bool NewRpgWanderRandomAction::Execute(Event /*event*/)
     if (SearchQuestGiverAndAcceptOrReward())
         return true;
 
-    return MoveRandomNear();
+    return sPlayerbotAIConfig.coaTargetSpread ? WanderBetweenPlaces() : LingerNear(50.0f);
 }
 
 bool NewRpgWanderNpcAction::Execute(Event /*event*/)
@@ -440,6 +465,7 @@ bool NewRpgWanderNpcAction::Execute(Event /*event*/)
         }
         data.npcOrGo = npcOrGo;
         data.lastReach = 0;
+        data.spot = WorldPosition();
         return true;
     }
 
@@ -449,21 +475,31 @@ bool NewRpgWanderNpcAction::Execute(Event /*event*/)
         if (!data.lastReach)
         {
             data.lastReach = getMSTime();
+            if (sPlayerbotAIConfig.coaTargetSpread)
+            {
+                HumanMovement::RefreshTarget(bot);
+                info.recentTargets.Push(HumanMovement::NpcTargetKey(object));
+            }
+            data.stayMs = sPlayerbotAIConfig.coaDwell ? HumanMovement::DwellMs(4000, 10000, 60000) : npcStayTime;
+            HumanMovement::NoteDwell(data.stayMs);
+            StandCues(object);
             if (bot->CanInteractWithQuestGiver(object))
                 InteractWithNpcOrGameObjectForQuest(data.npcOrGo);
             return true;
         }
 
-        if (data.lastReach && GetMSTimeDiffToNow(data.lastReach) < npcStayTime)
+        if (data.lastReach && GetMSTimeDiffToNow(data.lastReach) < data.stayMs)
             return false;
 
-        // has reached the npc for more than `npcStayTime`, select the next target
+        // has reached the npc for more than the stay time, select the next target
+        HumanMovement::ReleaseTarget(bot);
         data.npcOrGo = ObjectGuid();
         data.lastReach = 0;
+        data.spot = WorldPosition();
     }
     else
     {
-        if (MoveWorldObjectTo(data.npcOrGo))
+        if (MoveWorldObjectTo(data.npcOrGo, INTERACTION_DISTANCE, &data.spot))
             return true;
         // NPC pathing failed (random offset in a wall, mmap hiccup, etc).
         // Take a small random step so the next tick retries from a
@@ -551,7 +587,8 @@ bool NewRpgDoQuestAction::DoIncompleteQuest(NewRpgInfo::DoQuest& data)
         if (dz == INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
             return false;
 
-        WorldPosition pos(bot->GetMapId(), dx, dy, dz);
+        WorldPosition pos = HumanMovement::PickSpotNear(bot, bot->GetMap(), WorldPosition(bot->GetMapId(), dx, dy, dz),
+                                                        HumanMovement::SpotKind::Field, 12.0f);
         data.lastReachPOI = 0;
         data.pos = pos;
         data.objectiveIdx = objectiveIdx;
@@ -615,7 +652,7 @@ bool NewRpgDoQuestAction::DoIncompleteQuest(NewRpgInfo::DoQuest& data)
     // random 20yd hops that look like pacing back and forth. A small
     // ~8yd wander reads as the bot looking around while grind/loot
     // strategies do their work.
-    return MoveRandomNear(8.0f);
+    return LingerNear(8.0f);
 }
 
 bool NewRpgDoQuestAction::DoCompletedQuest(NewRpgInfo::DoQuest& data)

@@ -420,6 +420,13 @@ public:
     uint32 coaPlayersReplaceBots;
     uint32 coaPlayersReplaceBotsMin;
     bool coaChaseLeash;
+    bool coaCrowdSpots;
+    bool coaDwell;
+    bool coaPolish;
+    bool coaSmoothPaths;
+    uint32 coaMovementMetricsSeconds;
+    bool coaTargetSpread;
+    uint32 coaRoutePauseYards;
     bool coaBodyPullGuard;
     bool coaKeepTargetOutOfSight;
     bool coaFocusRunners;

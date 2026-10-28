@@ -786,6 +786,13 @@ bool PlayerbotAIConfig::Initialize()
     coaPlayersReplaceBots = std::min<uint32>(sConfigMgr->GetOption<uint32>("AiPlayerbot.CoaPlayersReplaceBots", 0, false), 1000);
     coaPlayersReplaceBotsMin = sConfigMgr->GetOption<uint32>("AiPlayerbot.CoaPlayersReplaceBotsMin", 0, false);
     coaChaseLeash = sConfigMgr->GetOption<bool>("AiPlayerbot.CoaChaseLeash", true, false);
+    coaCrowdSpots = sConfigMgr->GetOption<bool>("AiPlayerbot.CoaCrowdSpots", true, false);
+    coaDwell = sConfigMgr->GetOption<bool>("AiPlayerbot.CoaDwell", true, false);
+    coaPolish = sConfigMgr->GetOption<bool>("AiPlayerbot.CoaPolish", true, false);
+    coaSmoothPaths = sConfigMgr->GetOption<bool>("AiPlayerbot.CoaSmoothPaths", true, false);
+    coaMovementMetricsSeconds = sConfigMgr->GetOption<uint32>("AiPlayerbot.CoaMovementMetricsSeconds", 60, false);
+    coaTargetSpread = sConfigMgr->GetOption<bool>("AiPlayerbot.CoaTargetSpread", true, false);
+    coaRoutePauseYards = sConfigMgr->GetOption<uint32>("AiPlayerbot.CoaRoutePauseYards", 400, false);
     coaBodyPullGuard = sConfigMgr->GetOption<bool>("AiPlayerbot.CoaBodyPullGuard", true, false);
     coaKeepTargetOutOfSight = sConfigMgr->GetOption<bool>("AiPlayerbot.CoaKeepTargetOutOfSight", true, false);
     coaFocusRunners = sConfigMgr->GetOption<bool>("AiPlayerbot.CoaFocusRunners", true, false);

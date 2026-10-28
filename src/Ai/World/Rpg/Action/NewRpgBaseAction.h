@@ -35,9 +35,16 @@ public:
 protected:
     /* MOVEMENT RELATED */
     bool MoveFarTo(WorldPosition dest);
-    bool MoveWorldObjectTo(ObjectGuid guid, float distance = INTERACTION_DISTANCE);
+    bool MoveWorldObjectTo(ObjectGuid guid, float distance = INTERACTION_DISTANCE, WorldPosition* spot = nullptr);
     bool MoveRandomNear(float moveStep = 50.0f, MovementPriority priority = MovementPriority::MOVEMENT_NORMAL, WorldObject* center = nullptr);
     bool ForceToWait(uint32 duration, MovementPriority priority = MovementPriority::MOVEMENT_NORMAL);
+    bool MoveHumanTo(uint32 mapId, float x, float y, float z,
+                     MovementPriority priority = MovementPriority::MOVEMENT_NORMAL, float pauseChance = 0.0f);
+    bool LingerNear(float moveStep);
+    bool WanderBetweenPlaces();
+    float RoutePauseChance(WorldPosition const& dest, float legX, float legY);
+    bool TakeRoutePause();
+    void StandCues(WorldObject* facing = nullptr);
 
     /* QUEST RELATED CHECK */
     ObjectGuid ChooseNpcOrGameObjectToInteract(bool questgiverOnly = false, float distanceLimit = 0.0f);

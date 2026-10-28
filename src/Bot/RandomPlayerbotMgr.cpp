@@ -4,6 +4,7 @@
  * or (at your option) any later version.
  */
 
+#include "HumanMovement.h"
 #include "RandomPlayerbotMgr.h"
 #include "BattlegroundUtils.h"
 #include "AiFactory.h"
@@ -2126,6 +2127,12 @@ void RandomPlayerbotMgr::RandomTeleport(Player* bot, std::vector<WorldLocation>&
         Map* map = sMapMgr->FindMap(loc.GetMapId(), 0);
         if (!map)
             continue;
+
+        WorldPosition const spot = HumanMovement::PickSpotNear(bot, map, WorldPosition(loc.GetMapId(), x, y, z),
+                                                               HumanMovement::SpotKind::Field, 15.0f);
+        x = spot.GetPositionX();
+        y = spot.GetPositionY();
+        z = spot.GetPositionZ();
 
         AreaTableEntry const* zone = sAreaTableStore.LookupEntry(map->GetZoneId(bot->GetPhaseMask(), x, y, z));
         if (!zone)

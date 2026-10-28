@@ -87,6 +87,7 @@ void NewRpgInfo::Reset()
 {
     data = Idle{};
     startT = getMSTime();
+    recentTargets.Clear();
 }
 
 void NewRpgInfo::SetMoveFarTo(WorldPosition pos)
@@ -95,6 +96,7 @@ void NewRpgInfo::SetMoveFarTo(WorldPosition pos)
     stuckTs = 0;
     stuckAttempts = 0;
     moveFarPos = pos;
+    pausePos = WorldPosition();
 }
 
 NewRpgStatus NewRpgInfo::StatusFromString(std::string const& name)
