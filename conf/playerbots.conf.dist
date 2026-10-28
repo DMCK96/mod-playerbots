@@ -2660,6 +2660,12 @@ AiPlayerbot.MaxRandomBotRandomizeTime = 1209600
 # Default: 60
 AiPlayerbot.RandomBotsPerInterval = 60
 
+# Fast login at startup: for the first MaxRandomBots * 0.51 seconds after startup the manager checks every second
+# instead of every RandomBotUpdateInterval, so bots log in far faster than RandomBotsPerInterval suggests.
+# Set to 0 to use the configured pacing from the first minute.
+# Default: 1
+AiPlayerbot.RandomBotLoginTurbo = 1
+
 # Interval (in seconds) between periodic random bot statistics dumps in the log
 # (online count, level/race/class distribution, roles, status). Set to 0 to disable.
 # Default: 300
