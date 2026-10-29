@@ -430,7 +430,12 @@ bool NewRpgBaseAction::MoveWorldObjectTo(ObjectGuid guid, float distance, WorldP
         if (*spot == WorldPosition())
             *spot = HumanMovement::PickSpotNear(bot, bot->GetMap(), WorldPosition(object),
                                                 HumanMovement::SpotKind::Npc, distance * 0.9f);
-        if (MoveHumanTo(spot->GetMapId(), spot->GetPositionX(), spot->GetPositionY(), spot->GetPositionZ()))
+        bool const moved = bot->GetExactDist2d(spot->GetPositionX(), spot->GetPositionY()) >=
+                                   sPlayerbotAIConfig.coaRoadMinTrip
+                               ? MoveFarTo(*spot)
+                               : MoveHumanTo(spot->GetMapId(), spot->GetPositionX(), spot->GetPositionY(),
+                                             spot->GetPositionZ());
+        if (moved)
             return true;
         *spot = WorldPosition();
         return false;

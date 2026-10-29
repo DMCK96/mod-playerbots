@@ -1741,8 +1741,8 @@ AiPlayerbot.CoaRoutePauseYards = 400
 AiPlayerbot.CoaRoadShare = 100
 
 # Trips shorter than this many yards go straight, as before.
-# Default: 150
-AiPlayerbot.CoaRoadMinTrip = 150
+# Default: 25
+AiPlayerbot.CoaRoadMinTrip = 25
 
 # Seconds between "coa movement" summary lines in the server log (spots picked, overlap, lane
 # launches, dwell, time spent) and "coa pathing" lines (moves that fell back to a straight line and
