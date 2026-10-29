@@ -476,6 +476,33 @@ bool NewRpgBaseAction::MoveRandomNear(float moveStep, MovementPriority priority,
     // false, and the caller had no fallback — bot stood still. Retry a
     // handful of times with a fresh distance each loop so a bad roll
     // doesn't lock the bot in place.
+    if (sPlayerbotAIConfig.coaRoadShare && rand_norm() * 100.0f < float(sPlayerbotAIConfig.coaRoadShare) &&
+        !bot->IsFlying() && !bot->isSwimming() && !bot->GetVehicle())
+    {
+        if (std::shared_ptr<RoadRules::RoadGraph const> const graph = HumanMovement::RoadGraphFor(bot->GetMapId()))
+        {
+            std::vector<uint32_t> streets;
+            for (uint32_t id : graph->Nearest(x, y, moveStep, 24))
+            {
+                RoadRules::RoadNode const& node = graph->Node(id);
+                if (RoadRules::Distance2d(x, y, node.x, node.y) >= 0.4f * moveStep)
+                    streets.push_back(id);
+            }
+            if (!streets.empty())
+            {
+                RoadRules::RoadNode const& node = graph->Node(streets[urand(0, streets.size() - 1)]);
+                float const side = float(rand_norm()) * 2.0f * static_cast<float>(M_PI);
+                float const offset = frand(0.0f, 2.5f);
+                float const rx = node.x + offset * std::cos(side);
+                float const ry = node.y + offset * std::sin(side);
+                float rz = map->GetHeight(bot->GetPhaseMask(), rx, ry, z + 10.0f, true, 50.0f);
+                if (rz <= INVALID_HEIGHT)
+                    rz = z;
+                if (MoveHumanTo(bot->GetMapId(), rx, ry, rz, priority))
+                    return true;
+            }
+        }
+    }
     for (int attempt = 0; attempt < 8; ++attempt)
     {
         float distance = (0.4f + rand_norm() * 0.6f) * moveStep;
