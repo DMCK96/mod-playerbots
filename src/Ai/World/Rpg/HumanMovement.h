@@ -10,9 +10,12 @@
 #include "Define.h"
 #include "HumanMovementRules.h"
 #include "MoveSplineInitArgs.h"
+#include "RoadGraph.h"
 #include "TravelMgr.h"
 
 #include <chrono>
+#include <memory>
+#include <unordered_set>
 #include <vector>
 
 class Creature;
@@ -89,6 +92,15 @@ void NoteHop();
 void NoteEmote();
 void NoteSmoothLaunch(bool smooth);
 void NotePause();
+
+// Road graph of a map from DataDir/roads/<map>.roads, loaded on first use; null when the map has none.
+std::shared_ptr<RoadRules::RoadGraph const> RoadGraphFor(uint32 mapId);
+// Edges bots failed to walk, skipped by road plans on that map for RoadRules::BlockMs.
+void BlockRoadEdge(uint32 mapId, uint32_t edge);
+std::unordered_set<uint32_t> BlockedRoadEdges(uint32 mapId);
+void NoteRoadPlan(RoadRules::PlanResult result, bool hadGraph, uint32 micros);
+void NoteRoadWaypoint();
+void NoteRoadAbandon();
 
 class CostTimer
 {

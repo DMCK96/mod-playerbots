@@ -18,11 +18,14 @@
 #include "PlayerbotAIConfig.h"
 #include "Random.h"
 #include "Timer.h"
+#include "World.h"
 
 #include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <ctime>
+#include <fstream>
+#include <iterator>
 #include <memory>
 #include <mutex>
 #include <unordered_map>
@@ -224,6 +227,14 @@ struct Counters
     std::atomic<uint64> occupancySum[3]{};
     std::atomic<uint64> occupancyPicks[3]{};
     std::atomic<uint64> pauses{0};
+    std::atomic<uint64> roadPlans{0};
+    std::atomic<uint64> roadNoGraph{0};
+    std::atomic<uint64> roadUsed{0};
+    std::atomic<uint64> roadNoRoad{0};
+    std::atomic<uint64> roadTooLong{0};
+    std::atomic<uint64> roadWaypoints{0};
+    std::atomic<uint64> roadAbandons{0};
+    std::atomic<uint64> roadMicros{0};
     std::atomic<uint64> micros[3]{};
     std::atomic<uint32> nextLog{0};
 };
@@ -260,11 +271,16 @@ void MaybeLog()
         uint64 const n = counters.occupancyPicks[kind].exchange(0);
         occupancy[kind] = n ? double(sum) / double(n) : 0.0;
     }
+    uint64 const roadPlans = counters.roadPlans.exchange(0);
+    uint64 const roadNoGraph = counters.roadNoGraph.exchange(0);
+    uint64 const roadMicros = counters.roadMicros.exchange(0);
+    uint64 const roadSearches = roadPlans - std::min(roadPlans, roadNoGraph);
     LOG_INFO("playerbots",
              "coa movement (last {}s): spots {} (overlap {} = {:.1f}%, retries {}, fallbacks {}), curved {} plain {}, "
              "dwells {} (avg {:.1f}s), hops {}, emotes {}, cost: pick {:.1f}us avg, launch {:.1f}us avg, "
              "targets {} (repeat {:.1f}%, live scans {}, occupancy hub {:.1f} spread {:.1f} place {:.1f}, "
-             "choose {:.1f}us avg), pauses {}",
+             "choose {:.1f}us avg), pauses {}, road plans {} (used {}, no graph {}, no road {}, too long {}), "
+             "waypoints {}, abandoned {}, plan {:.1f}us avg",
              interval, picks, overlaps, picks ? 100.0 * double(overlaps) / double(picks) : 0.0,
              counters.retries.exchange(0), counters.fallbacks.exchange(0), smooth, plain, dwells,
              dwells ? double(dwellMs) / double(dwells) / 1000.0 : 0.0, counters.hops.exchange(0),
@@ -272,7 +288,9 @@ void MaybeLog()
              (smooth + plain) ? double(launchMicros) / double(smooth + plain) : 0.0, targets,
              targets ? 100.0 * double(repeats) / double(targets) : 0.0, counters.liveScans.exchange(0), occupancy[0],
              occupancy[1], occupancy[2], targets ? double(chooseMicros) / double(targets) : 0.0,
-             counters.pauses.exchange(0));
+             counters.pauses.exchange(0), roadPlans, counters.roadUsed.exchange(0), roadNoGraph,
+             counters.roadNoRoad.exchange(0), counters.roadTooLong.exchange(0), counters.roadWaypoints.exchange(0),
+             counters.roadAbandons.exchange(0), roadSearches ? double(roadMicros) / double(roadSearches) : 0.0);
 }
 
 uint32 LivePlayersNear(Player* bot, WorldPosition const& pos, float radius)
@@ -609,5 +627,87 @@ void NoteSmoothLaunch(bool smooth)
 void NotePause()
 {
     counters.pauses.fetch_add(1, std::memory_order_relaxed);
+}
+
+std::shared_ptr<RoadRules::RoadGraph const> RoadGraphFor(uint32 mapId)
+{
+    static std::mutex lock;
+    static std::unordered_map<uint32, std::shared_ptr<RoadRules::RoadGraph const>> graphs;
+    std::lock_guard<std::mutex> guard(lock);
+    auto const cached = graphs.find(mapId);
+    if (cached != graphs.end())
+        return cached->second;
+
+    std::shared_ptr<RoadRules::RoadGraph const> graph;
+    std::string const path = Acore::StringFormat("{}roads/{:03}.roads", sWorld->GetDataPath(), mapId);
+    std::ifstream file(path, std::ios::binary);
+    if (!file)
+        LOG_DEBUG("playerbots", "coa movement: no road graph for map {} ({})", mapId, path);
+    else
+    {
+        std::vector<uint8_t> const bytes{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+        if (std::optional<RoadRules::RoadGraph> parsed = RoadRules::RoadGraph::Parse(bytes.data(), bytes.size()))
+        {
+            graph = std::make_shared<RoadRules::RoadGraph const>(std::move(*parsed));
+            LOG_INFO("playerbots", "coa movement: road graph for map {}: {} nodes, {} edges", mapId,
+                     graph->NodeCount(), graph->EdgeCount());
+        }
+        else
+            LOG_ERROR("playerbots", "coa movement: road graph {} is damaged or of another version, ignored", path);
+    }
+    graphs[mapId] = graph;
+    return graph;
+}
+
+namespace
+{
+std::mutex roadBlockLock;
+std::unordered_map<uint32, RoadRules::EdgeBlocklist> roadBlocks;
+}  // namespace
+
+void BlockRoadEdge(uint32 mapId, uint32_t edge)
+{
+    std::lock_guard<std::mutex> guard(roadBlockLock);
+    roadBlocks[mapId].Block(edge, getMSTime());
+}
+
+std::unordered_set<uint32_t> BlockedRoadEdges(uint32 mapId)
+{
+    std::lock_guard<std::mutex> guard(roadBlockLock);
+    auto const blocks = roadBlocks.find(mapId);
+    return blocks == roadBlocks.end() ? std::unordered_set<uint32_t>{} : blocks->second.Snapshot(getMSTime());
+}
+
+void NoteRoadPlan(RoadRules::PlanResult result, bool hadGraph, uint32 micros)
+{
+    counters.roadPlans.fetch_add(1, std::memory_order_relaxed);
+    if (!hadGraph)
+    {
+        counters.roadNoGraph.fetch_add(1, std::memory_order_relaxed);
+        return;
+    }
+    counters.roadMicros.fetch_add(micros, std::memory_order_relaxed);
+    switch (result)
+    {
+        case RoadRules::PlanResult::Used:
+            counters.roadUsed.fetch_add(1, std::memory_order_relaxed);
+            break;
+        case RoadRules::PlanResult::TooLong:
+            counters.roadTooLong.fetch_add(1, std::memory_order_relaxed);
+            break;
+        default:
+            counters.roadNoRoad.fetch_add(1, std::memory_order_relaxed);
+            break;
+    }
+}
+
+void NoteRoadWaypoint()
+{
+    counters.roadWaypoints.fetch_add(1, std::memory_order_relaxed);
+}
+
+void NoteRoadAbandon()
+{
+    counters.roadAbandons.fetch_add(1, std::memory_order_relaxed);
 }
 }  // namespace HumanMovement

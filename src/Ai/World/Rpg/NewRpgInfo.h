@@ -100,6 +100,15 @@ struct NewRpgInfo
     uint32 stuckAttempts{0};
     WorldPosition moveFarPos;
     WorldPosition pausePos{};  // end of a leg cut short for a route pause
+    // Road waypoints planned for moveFarPos; `decided` keeps a trip from being planned twice.
+    struct RoadRoute
+    {
+        std::vector<WorldPosition> points;
+        std::vector<uint32_t> nodes;
+        size_t next{0};
+        bool decided{false};
+    };
+    RoadRoute road;
     // END MOVE_FAR
 
     using RpgData = std::variant<

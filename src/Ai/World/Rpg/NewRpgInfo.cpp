@@ -97,6 +97,7 @@ void NewRpgInfo::SetMoveFarTo(WorldPosition pos)
     stuckAttempts = 0;
     moveFarPos = pos;
     pausePos = WorldPosition();
+    road = RoadRoute{};
 }
 
 NewRpgStatus NewRpgInfo::StatusFromString(std::string const& name)

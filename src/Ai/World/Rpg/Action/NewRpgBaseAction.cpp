@@ -44,7 +44,10 @@
 #include "TravelMgr.h"
 #include "G3D/Vector2.h"
 #include <atomic>
+#include <chrono>
 #include <ctime>
+#include <memory>
+#include <unordered_set>
 
 bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
 {
@@ -101,8 +104,12 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
         }
     }
 
-    // stuck check
-    float disToDest = bot->GetDistance(dest);
+    PlanRoadRoute(dest);
+    WorldPosition const target = RoadLegTarget(dest);
+    bool const onRoad = OnRoadRoute();
+
+    // stuck check, against the current road waypoint while on a road route
+    float disToDest = bot->GetDistance(target);
     // Require a meaningful improvement (5yd) to reset the stuck counter.
     // The old 1yd threshold was small enough that bots oscillating back
     // and forth around an obstacle would keep "making progress" forever
@@ -120,6 +127,12 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
         // its RPG objective instead of oscillating indefinitely.
         botAI->rpgInfo.stuckTs = getMSTime();
         botAI->rpgInfo.stuckAttempts = 0;
+        // A road leg that does not close is given up for the direct trip; only that one may teleport.
+        if (onRoad)
+        {
+            AbandonRoadRoute();
+            return MoveFarTo(dest);
+        }
         AreaTableEntry const* entry = sAreaTableStore.LookupEntry(bot->GetZoneId());
         std::string zone_name = PlayerbotAI::GetLocalizedAreaName(entry);
         LOG_DEBUG(
@@ -136,12 +149,12 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
     if (sPlayerbotAIConfig.coaTargetSpread)
         HumanMovement::RefreshTarget(bot);
 
-    float dis = bot->GetExactDist(dest);
+    float dis = bot->GetExactDist(target);
     if (dis < pathFinderDis)
     {
-        return MoveHumanTo(dest.GetMapId(), dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ(),
+        return MoveHumanTo(target.GetMapId(), target.GetPositionX(), target.GetPositionY(), target.GetPositionZ(),
                            MovementPriority::MOVEMENT_NORMAL,
-                           RoutePauseChance(dest, dest.GetPositionX(), dest.GetPositionY()));
+                           RoutePauseChance(dest, target.GetPositionX(), target.GetPositionY()));
     }
 
     const uint32 typeOk = PATHFIND_NORMAL | PATHFIND_INCOMPLETE | PATHFIND_FARFROMPOLY;
@@ -158,9 +171,14 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
     // further PathGenerator calls fire until the bot arrives.
     {
         PathGenerator path(bot);
-        path.CalculatePath(dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ());
+        path.CalculatePath(target.GetPositionX(), target.GetPositionY(), target.GetPositionZ());
         PathType type = path.GetPathType();
         bool canReach = !(type & (~typeOk));
+        if (!canReach && onRoad)
+        {
+            AbandonRoadRoute();
+            return MoveFarTo(dest);
+        }
         if (canReach)
         {
             G3D::Vector3 const& endPos = path.GetActualEndPosition();
@@ -169,7 +187,7 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
             // results (e.g. disconnected polys that still report
             // INCOMPLETE) the endpoint can land right under the bot;
             // fall through to cone sampling in that case.
-            float endDistToDest = dest.GetExactDist(endPos.x, endPos.y, endPos.z);
+            float endDistToDest = target.GetExactDist(endPos.x, endPos.y, endPos.z);
             if (endDistToDest + 5.0f < disToDest)
             {
                 return MoveHumanTo(bot->GetMapId(), endPos.x, endPos.y, endPos.z, MovementPriority::MOVEMENT_NORMAL,
@@ -187,7 +205,7 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
     const float x = bot->GetPositionX();
     const float y = bot->GetPositionY();
     const float z = bot->GetPositionZ();
-    const float baseAngle = bot->GetAngle(&dest);
+    const float baseAngle = bot->GetAngle(&target);
     float rx, ry, rz;
     bool found = false;
     for (int attempt = 0; attempt < 2; ++attempt)
@@ -219,6 +237,136 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
                            RoutePauseChance(dest, rx, ry));
     }
     return false;
+}
+
+void NewRpgBaseAction::PlanRoadRoute(WorldPosition const& dest)
+{
+    NewRpgInfo::RoadRoute& road = botAI->rpgInfo.road;
+    if (road.decided)
+        return;
+    road.decided = true;
+    if (!sPlayerbotAIConfig.coaRoadShare || dest.GetMapId() != bot->GetMapId() || bot->IsFlying() ||
+        bot->isSwimming() || bot->GetVehicle() ||
+        !RoadRules::RoadTripEligible(bot->GetExactDist2d(dest.GetPositionX(), dest.GetPositionY()),
+                                     sPlayerbotAIConfig.coaRoadMinTrip, sPlayerbotAIConfig.coaRoadShare,
+                                     float(rand_norm())))
+        return;
+
+    std::shared_ptr<RoadRules::RoadGraph const> const graph = HumanMovement::RoadGraphFor(bot->GetMapId());
+    if (!graph)
+    {
+        HumanMovement::NoteRoadPlan(RoadRules::PlanResult::NoRoad, false, 0);
+        return;
+    }
+    std::unordered_set<uint32_t> const blocked = HumanMovement::BlockedRoadEdges(bot->GetMapId());
+    auto const started = std::chrono::steady_clock::now();
+    RoadRules::RoadPlan const plan =
+        graph->Plan({bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ()},
+                    {dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ()}, RoadRules::PlanParams{},
+                    blocked.empty() ? nullptr : &blocked);
+    auto const micros =
+        std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - started).count();
+    HumanMovement::NoteRoadPlan(plan.result, true, uint32(micros));
+    if (plan.result != RoadRules::PlanResult::Used)
+        return;
+    road.nodes = plan.nodes;
+    road.points.reserve(plan.nodes.size());
+    for (uint32_t id : plan.nodes)
+    {
+        RoadRules::RoadNode const& node = graph->Node(id);
+        road.points.emplace_back(bot->GetMapId(), node.x, node.y, node.z);
+    }
+    road.next = 0;
+}
+
+bool NewRpgBaseAction::OnRoadRoute() const
+{
+    NewRpgInfo::RoadRoute const& road = botAI->rpgInfo.road;
+    return road.next < road.points.size();
+}
+
+WorldPosition NewRpgBaseAction::RoadLegTarget(WorldPosition const& dest)
+{
+    NewRpgInfo& info = botAI->rpgInfo;
+    NewRpgInfo::RoadRoute& road = info.road;
+    auto const point = [](WorldPosition const& p)
+    { return RoadRules::Point{p.GetPositionX(), p.GetPositionY(), p.GetPositionZ()}; };
+    RoadRules::Point const here{bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ()};
+    bool advanced = false;
+    while (road.next < road.points.size())
+    {
+        bool const hasNext = road.next + 1 < road.points.size();
+        RoadRules::Point const following = hasNext ? point(road.points[road.next + 1]) : RoadRules::Point{};
+        if (!RoadRules::ShouldAdvance(here, point(road.points[road.next]), hasNext ? &following : nullptr))
+            break;
+        ++road.next;
+        advanced = true;
+        HumanMovement::NoteRoadWaypoint();
+    }
+    if (advanced)
+    {
+        info.nearestMoveFarDis = FLT_MAX;
+        info.stuckTs = getMSTime();
+        info.stuckAttempts = 0;
+    }
+    if (road.next >= road.points.size())
+        return dest;
+
+    // Aim each leg up to LegYards along the road; the navmesh path to it stays close to the road.
+    size_t leg = road.next;
+    float walked = bot->GetExactDist2d(road.points[leg].GetPositionX(), road.points[leg].GetPositionY());
+    while (leg + 1 < road.points.size())
+    {
+        float const step = road.points[leg].GetExactDist2d(road.points[leg + 1].GetPositionX(),
+                                                           road.points[leg + 1].GetPositionY());
+        if (walked + step > RoadRules::LegYards)
+            break;
+        walked += step;
+        ++leg;
+    }
+
+    WorldPosition const& node = road.points[leg];
+    float const x = node.GetPositionX();
+    float const y = node.GetPositionY();
+    float z = node.GetPositionZ();
+    float const ground = bot->GetMap()->GetHeight(bot->GetPhaseMask(), x, y, z + 10.0f, true, 50.0f);
+    if (ground > INVALID_HEIGHT)
+        z = ground;
+
+    // Each bot keeps to its own side of the road, 1-3 yards off the centreline.
+    uint32 const counter = bot->GetGUID().GetCounter();
+    RoadRules::Point const previous = leg ? point(road.points[leg - 1]) : here;
+    RoadRules::Point const shifted =
+        RoadRules::OffsetWaypoint(previous, {x, y, z}, counter % 2 ? 1 : -1, float(1 + counter % 3));
+    float sx = shifted.x;
+    float sy = shifted.y;
+    float sz = shifted.z;
+    if (bot->GetMap()->CheckCollisionAndGetValidCoords(bot, x, y, z, sx, sy, sz) &&
+        !bot->GetMap()->IsInWater(bot->GetPhaseMask(), sx, sy, sz, bot->GetCollisionHeight()))
+        return WorldPosition(bot->GetMapId(), sx, sy, sz);
+    return WorldPosition(bot->GetMapId(), x, y, z);
+}
+
+void NewRpgBaseAction::AbandonRoadRoute()
+{
+    NewRpgInfo& info = botAI->rpgInfo;
+    NewRpgInfo::RoadRoute& road = info.road;
+    if (road.next > 0 && road.next < road.nodes.size())
+    {
+        if (std::shared_ptr<RoadRules::RoadGraph const> const graph = HumanMovement::RoadGraphFor(bot->GetMapId()))
+        {
+            uint32_t const edge = graph->EdgeBetween(road.nodes[road.next - 1], road.nodes[road.next]);
+            if (edge != RoadRules::NoEdge)
+                HumanMovement::BlockRoadEdge(bot->GetMapId(), edge);
+        }
+    }
+    HumanMovement::NoteRoadAbandon();
+    road.points.clear();
+    road.nodes.clear();
+    road.next = 0;
+    info.nearestMoveFarDis = FLT_MAX;
+    info.stuckTs = getMSTime();
+    info.stuckAttempts = 0;
 }
 
 bool NewRpgBaseAction::MoveWorldObjectTo(ObjectGuid guid, float distance, WorldPosition* spot)

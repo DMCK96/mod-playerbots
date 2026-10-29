@@ -1717,6 +1717,18 @@ AiPlayerbot.CoaTargetSpread = 1
 # Default: 400
 AiPlayerbot.CoaRoutePauseYards = 400
 
+# Percent of trips (of at least AiPlayerbot.CoaRoadMinTrip yards, on foot or mounted) on which a bot
+# follows roads where a road gets it there without a long detour, joining and leaving the road near
+# the ends. Needs road graphs in DataDir/roads/, built from the client with
+# modules/mod-playerbots/tools/roads/build_roads.py (see its README); without them these keys do
+# nothing. 0 = bots never follow roads.
+# Default: 75
+AiPlayerbot.CoaRoadShare = 75
+
+# Trips shorter than this many yards go straight, as before.
+# Default: 150
+AiPlayerbot.CoaRoadMinTrip = 150
+
 # Seconds between "coa movement" summary lines in the server log (spots picked, overlap, curve
 # launches, dwell, time spent). 0 = no lines. Use together with "playerbots pmon" to compare
 # the cost with every Coa movement key set to 0.

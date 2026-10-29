@@ -44,6 +44,10 @@ protected:
     bool WanderBetweenPlaces();
     float RoutePauseChance(WorldPosition const& dest, float legX, float legY);
     bool TakeRoutePause();
+    void PlanRoadRoute(WorldPosition const& dest);
+    WorldPosition RoadLegTarget(WorldPosition const& dest);
+    bool OnRoadRoute() const;
+    void AbandonRoadRoute();
     void StandCues(WorldObject* facing = nullptr);
 
     /* QUEST RELATED CHECK */

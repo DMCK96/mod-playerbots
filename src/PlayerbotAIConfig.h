@@ -427,6 +427,8 @@ public:
     uint32 coaMovementMetricsSeconds;
     bool coaTargetSpread;
     uint32 coaRoutePauseYards;
+    uint32 coaRoadShare;
+    float coaRoadMinTrip;
     bool coaBodyPullGuard;
     bool coaKeepTargetOutOfSight;
     bool coaFocusRunners;
