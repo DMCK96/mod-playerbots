@@ -41,7 +41,8 @@ struct Point
 
 constexpr uint32_t NoEdge = UINT32_MAX;
 constexpr uint32_t BlockMs = 1800000;
-constexpr float AdvanceYards = 12.0f;  // past the 10 yd at which MoveFarTo starts the next leg
+constexpr float MaxCoordinate = 100000.0f;
+constexpr float AdvanceYards = 16.0f;  // past the 10 yd at which MoveFarTo starts the next leg, plus the offset
 constexpr float LegYards = 60.0f;      // road walked per leg before asking the navmesh again
 
 struct PlanParams
@@ -100,6 +101,9 @@ public:
             std::memcpy(&node.y, cursor + 4, 4);
             std::memcpy(&node.z, cursor + 8, 4);
             cursor += nodeSize;
+            for (float v : {node.x, node.y, node.z})
+                if (!std::isfinite(v) || std::fabs(v) > MaxCoordinate)
+                    return std::nullopt;
         }
         for (RoadEdge& edge : graph.edges)
         {
@@ -237,8 +241,13 @@ public:
         if (!reached)
             return plan;
 
-        for (uint32_t id = parent[goal]; id != start; id = parent[id])
+        for (uint32_t id = parent[goal]; id != start && plan.nodes.size() <= nodes.size(); id = parent[id])
             plan.nodes.push_back(id);
+        if (plan.nodes.empty() || plan.nodes.size() > nodes.size())
+        {
+            plan.nodes.clear();
+            return plan;
+        }
         std::reverse(plan.nodes.begin(), plan.nodes.end());
         for (size_t i = 1; i < plan.nodes.size(); ++i)
         {

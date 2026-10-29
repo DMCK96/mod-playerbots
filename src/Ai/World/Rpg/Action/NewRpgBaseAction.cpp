@@ -120,7 +120,8 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
         botAI->rpgInfo.stuckTs = getMSTime();
         botAI->rpgInfo.stuckAttempts = 0;
     }
-    else if (++botAI->rpgInfo.stuckAttempts >= 5 && GetMSTimeDiffToNow(botAI->rpgInfo.stuckTs) >= stuckTime)
+    else if (++botAI->rpgInfo.stuckAttempts >= 5 &&
+             GetMSTimeDiffToNow(botAI->rpgInfo.stuckTs) >= (onRoad ? roadStuckTime : stuckTime))
     {
         // No meaningful progress toward dest for `stuckTime`: fall
         // back to teleporting directly so the bot can get on with
@@ -242,9 +243,12 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
 void NewRpgBaseAction::PlanRoadRoute(WorldPosition const& dest)
 {
     NewRpgInfo::RoadRoute& road = botAI->rpgInfo.road;
+    if (road.decided && road.mapId != bot->GetMapId())
+        road = NewRpgInfo::RoadRoute{};
     if (road.decided)
         return;
     road.decided = true;
+    road.mapId = bot->GetMapId();
     if (!sPlayerbotAIConfig.coaRoadShare || dest.GetMapId() != bot->GetMapId() || bot->IsFlying() ||
         bot->isSwimming() || bot->GetVehicle() ||
         !RoadRules::RoadTripEligible(bot->GetExactDist2d(dest.GetPositionX(), dest.GetPositionY()),
@@ -325,11 +329,14 @@ WorldPosition NewRpgBaseAction::RoadLegTarget(WorldPosition const& dest)
         ++leg;
     }
 
+    road.leg = leg;
     WorldPosition const& node = road.points[leg];
     float const x = node.GetPositionX();
     float const y = node.GetPositionY();
     float z = node.GetPositionZ();
-    float const ground = bot->GetMap()->GetHeight(bot->GetPhaseMask(), x, y, z + 10.0f, true, 50.0f);
+    float ground = bot->GetMap()->GetHeight(bot->GetPhaseMask(), x, y, z + 10.0f, true, 50.0f);
+    if (ground <= INVALID_HEIGHT)
+        ground = bot->GetMap()->GetHeight(bot->GetPhaseMask(), x, y, bot->GetPositionZ() + 100.0f, true, 400.0f);
     if (ground > INVALID_HEIGHT)
         z = ground;
 
@@ -351,19 +358,25 @@ void NewRpgBaseAction::AbandonRoadRoute()
 {
     NewRpgInfo& info = botAI->rpgInfo;
     NewRpgInfo::RoadRoute& road = info.road;
-    if (road.next > 0 && road.next < road.nodes.size())
+    // Block the road edges of the leg that failed: from the last waypoint reached to the one aimed at.
+    size_t const last = std::min(road.leg, road.nodes.size() - 1);
+    if (!road.nodes.empty() && road.mapId == bot->GetMapId() && last > 0)
     {
         if (std::shared_ptr<RoadRules::RoadGraph const> const graph = HumanMovement::RoadGraphFor(bot->GetMapId()))
         {
-            uint32_t const edge = graph->EdgeBetween(road.nodes[road.next - 1], road.nodes[road.next]);
-            if (edge != RoadRules::NoEdge)
-                HumanMovement::BlockRoadEdge(bot->GetMapId(), edge);
+            for (size_t i = std::max<size_t>(road.next, 1); i <= last; ++i)
+            {
+                uint32_t const edge = graph->EdgeBetween(road.nodes[i - 1], road.nodes[i]);
+                if (edge != RoadRules::NoEdge)
+                    HumanMovement::BlockRoadEdge(bot->GetMapId(), edge);
+            }
         }
     }
     HumanMovement::NoteRoadAbandon();
     road.points.clear();
     road.nodes.clear();
     road.next = 0;
+    road.leg = 0;
     info.nearestMoveFarDis = FLT_MAX;
     info.stuckTs = getMSTime();
     info.stuckAttempts = 0;

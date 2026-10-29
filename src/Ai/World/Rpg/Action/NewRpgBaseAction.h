@@ -87,6 +87,8 @@ protected:
     // the teleport fires, but long enough that a genuine long
     // walk that is slowly making progress never triggers it.
     const uint32 stuckTime = 90 * 1000;
+    // A road leg that stops closing is given up for the direct trip much sooner than a trip is teleported.
+    const uint32 roadStuckTime = 20 * 1000;
 };
 
 #endif

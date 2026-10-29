@@ -105,7 +105,9 @@ struct NewRpgInfo
     {
         std::vector<WorldPosition> points;
         std::vector<uint32_t> nodes;
-        size_t next{0};
+        size_t next{0};  // first waypoint not reached yet
+        size_t leg{0};   // waypoint the current leg aims at
+        uint32 mapId{0};
         bool decided{false};
     };
     RoadRoute road;

@@ -106,6 +106,16 @@ TEST(RoadGraph, RejectsBadFiles)
     EXPECT_FALSE(RoadGraph::Parse(nullptr, 0).has_value());
 }
 
+TEST(RoadGraph, RejectsNonFiniteOrFarCoordinates)
+{
+    std::vector<uint8_t> const nan = Encode({{0, 0, 0}, {std::nanf(""), 1, 1}}, {{0, 1, 1}});
+    std::vector<uint8_t> const far = Encode({{0, 0, 0}, {2e9f, 1, 1}}, {{0, 1, 1}});
+    std::vector<uint8_t> const infinite = Encode({{0, 0, INFINITY}, {1, 1, 1}}, {{0, 1, 1}});
+    EXPECT_FALSE(RoadGraph::Parse(nan.data(), nan.size()).has_value());
+    EXPECT_FALSE(RoadGraph::Parse(far.data(), far.size()).has_value());
+    EXPECT_FALSE(RoadGraph::Parse(infinite.data(), infinite.size()).has_value());
+}
+
 TEST(RoadGraph, NearestIsSortedAndBounded)
 {
     RoadGraph const graph = StraightRoad();
@@ -202,6 +212,8 @@ TEST(RoadRules, AdvanceWhenCloseOrPastTheWaypoint)
     EXPECT_FALSE(ShouldAdvance({-20, 0, 0}, current, &next));
     EXPECT_FALSE(ShouldAdvance({-20, 0, 0}, current, nullptr));
     EXPECT_TRUE(ShouldAdvance({7, 0, 0}, current, nullptr));
+    // Released by the 10 yd move gate at a target offset up to 3 yd from the node.
+    EXPECT_TRUE(ShouldAdvance({-10, 3, 0}, current, nullptr));
 }
 
 TEST(RoadRules, EligibilityNeedsLengthAndRoll)

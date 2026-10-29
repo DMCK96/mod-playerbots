@@ -25,7 +25,6 @@
 #include <cmath>
 #include <ctime>
 #include <fstream>
-#include <iterator>
 #include <memory>
 #include <mutex>
 #include <unordered_map>
@@ -645,7 +644,10 @@ std::shared_ptr<RoadRules::RoadGraph const> RoadGraphFor(uint32 mapId)
         LOG_DEBUG("playerbots", "coa movement: no road graph for map {} ({})", mapId, path);
     else
     {
-        std::vector<uint8_t> const bytes{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+        file.seekg(0, std::ios::end);
+        std::vector<uint8_t> bytes(size_t(std::max<std::streamoff>(file.tellg(), 0)));
+        file.seekg(0, std::ios::beg);
+        file.read(reinterpret_cast<char*>(bytes.data()), std::streamsize(bytes.size()));
         if (std::optional<RoadRules::RoadGraph> parsed = RoadRules::RoadGraph::Parse(bytes.data(), bytes.size()))
         {
             graph = std::make_shared<RoadRules::RoadGraph const>(std::move(*parsed));
