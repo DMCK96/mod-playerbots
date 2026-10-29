@@ -140,10 +140,20 @@ TEST(RoadGraph, TripAlongARoadUsesIt)
     EXPECT_LE(plan.walkYards, 1.4f * plan.directYards);
 }
 
-TEST(RoadGraph, DestinationFarFromAnyRoadGoesDirect)
+TEST(RoadGraph, RoadIsRiddenToTheClosestPointThenLeft)
 {
     RoadGraph const graph = StraightRoad();
-    EXPECT_EQ(graph.Plan({0, 30, 0}, {1000, 300, 0}, PlanParams{}).result, PlanResult::NoRoad);
+    RoadPlan const plan = graph.Plan({0, 30, 0}, {1000, 300, 0}, PlanParams{});
+    ASSERT_EQ(plan.result, PlanResult::Used);
+    EXPECT_GE(graph.Node(plan.nodes.back()).x, 700.0f);
+    EXPECT_LE(plan.walkYards, 1.4f * plan.directYards);
+}
+
+TEST(RoadGraph, RoadBehindTheBotIsNotJoined)
+{
+    RoadGraph const graph = StraightRoad();
+    EXPECT_EQ(graph.Plan({500, 30, 0}, {500, 3000, 0}, PlanParams{}).result, PlanResult::NoRoad);
+    EXPECT_EQ(graph.Plan({1000, 30, 0}, {2000, 30, 0}, PlanParams{}).result, PlanResult::NoRoad);
 }
 
 TEST(RoadGraph, RoadThatSavesNothingLosesToTheDirectLine)
@@ -158,12 +168,6 @@ TEST(RoadGraph, CheaperButLongRoadIsTooLong)
     RoadGraph const graph = Make({{0, 0, 0}, {500, 560, 0}, {1000, 0, 0}}, {{0, 1, 1}, {1, 2, 1}});
     RoadPlan const plan = graph.Plan({0, 0, 0}, {1000, 0, 0}, PlanParams{});
     EXPECT_EQ(plan.result, PlanResult::TooLong);
-}
-
-TEST(RoadGraph, MostlyOffRoadRouteIsNotUsed)
-{
-    RoadGraph const graph = Make({{50, 0, 0}, {110, 0, 0}}, {{0, 1, 1}});
-    EXPECT_EQ(graph.Plan({0, 0, 0}, {160, 0, 0}, PlanParams{}).result, PlanResult::NoRoad);
 }
 
 TEST(RoadGraph, BlockedEdgeIsAvoided)
@@ -182,12 +186,14 @@ TEST(RoadGraph, BlockedEdgeIsAvoided)
     EXPECT_NE(std::find(plan.nodes.begin(), plan.nodes.end(), bend), plan.nodes.end());
 }
 
-TEST(RoadGraph, ExpansionCapGivesUp)
+TEST(RoadGraph, ExpansionCapKeepsTheBestRouteSoFar)
 {
     RoadGraph const graph = StraightRoad();
     PlanParams params;
     params.maxExpansions = 2;
-    EXPECT_EQ(graph.Plan({0, 30, 0}, {1000, 30, 0}, params).result, PlanResult::NoRoad);
+    RoadPlan const plan = graph.Plan({0, 30, 0}, {1000, 30, 0}, params);
+    EXPECT_EQ(plan.result, PlanResult::Used);
+    EXPECT_LE(plan.roadYards, 200.0f);
 }
 
 TEST(RoadGraph, LinkJoinsTwoRoadsAcrossAGap)

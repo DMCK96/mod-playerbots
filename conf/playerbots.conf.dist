@@ -1733,12 +1733,12 @@ AiPlayerbot.CoaTargetSpread = 1
 AiPlayerbot.CoaRoutePauseYards = 400
 
 # Percent of trips (of at least AiPlayerbot.CoaRoadMinTrip yards, on foot or mounted) on which a bot
-# follows roads where a road gets it there without a long detour, joining and leaving the road within
-# a quarter of the trip (80 to 250 yards) of its ends. Needs road graphs in DataDir/roads/, built from the client with
+# follows roads: it joins one that leads toward the goal (within
+# a quarter of the trip (80 to 250 yards) of its start), rides it as far as it helps, then walks off-road. Needs road graphs in DataDir/roads/, built from the client with
 # modules/mod-playerbots/tools/roads/build_roads.py (see its README); without them these keys do
 # nothing. 0 = bots never follow roads.
-# Default: 75
-AiPlayerbot.CoaRoadShare = 75
+# Default: 100
+AiPlayerbot.CoaRoadShare = 100
 
 # Trips shorter than this many yards go straight, as before.
 # Default: 150

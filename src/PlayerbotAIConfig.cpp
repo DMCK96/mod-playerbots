@@ -802,7 +802,7 @@ bool PlayerbotAIConfig::Initialize()
     coaMovementMetricsSeconds = sConfigMgr->GetOption<uint32>("AiPlayerbot.CoaMovementMetricsSeconds", 60, false);
     coaTargetSpread = sConfigMgr->GetOption<bool>("AiPlayerbot.CoaTargetSpread", true, false);
     coaRoutePauseYards = sConfigMgr->GetOption<uint32>("AiPlayerbot.CoaRoutePauseYards", 400, false);
-    coaRoadShare = sConfigMgr->GetOption<uint32>("AiPlayerbot.CoaRoadShare", 75, false);
+    coaRoadShare = sConfigMgr->GetOption<uint32>("AiPlayerbot.CoaRoadShare", 100, false);
     coaRoadMinTrip = sConfigMgr->GetOption<float>("AiPlayerbot.CoaRoadMinTrip", 150.0f, false);
     coaBodyPullGuard = sConfigMgr->GetOption<bool>("AiPlayerbot.CoaBodyPullGuard", true, false);
     coaKeepTargetOutOfSight = sConfigMgr->GetOption<bool>("AiPlayerbot.CoaKeepTargetOutOfSight", true, false);

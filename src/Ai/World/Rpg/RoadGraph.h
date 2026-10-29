@@ -46,6 +46,7 @@ constexpr uint32_t NoEdge = UINT32_MAX;
 constexpr uint32_t BlockMs = 1800000;
 constexpr float MaxCoordinate = 100000.0f;
 constexpr float AdvanceYards = 16.0f;  // past the 10 yd at which MoveFarTo starts the next leg, plus the offset
+constexpr float EntryBackslide = 0.25f;  // a road node may be this share of its distance farther from the goal
 constexpr float LegYards = 60.0f;      // road walked per leg before asking the navmesh again
 
 struct PlanParams
@@ -54,7 +55,7 @@ struct PlanParams
     size_t entryCount = 4;       // road nodes tried at each end
     float offRoadFactor = 1.6f;  // cost of a yard off the road against a yard on it
     float maxDetour = 1.4f;      // longest accepted walk against the direct distance
-    float minRoadShare = 0.5f;   // road yards needed against the direct distance
+    float minRoadShare = 0.0f;   // road yards needed against the direct distance
     size_t maxExpansions = 20000;
 };
 
@@ -176,28 +177,29 @@ public:
         return ids;
     }
 
-    // A* from `from` to `to` where joining and leaving the road costs offRoadFactor per yard; the direct line
-    // at the same rate is the bar a road route has to beat.
+    // Cheapest way to join a road near `from` (only at a node closer to `to` than `from` is, give or take a quarter of the way to the road) and ride it as far as it pays, then leave it for `to`: every road
+    // node is a place to step off, at offRoadFactor per yard of the way still to go. The direct line at the same
+    // rate is the bar a road route has to beat. Past the expansion cap the best route found so far is kept.
     RoadPlan Plan(Point from, Point to, PlanParams const& params,
                   std::unordered_set<uint32_t> const* blocked = nullptr) const
     {
         RoadPlan plan;
         plan.directYards = Distance2d(from.x, from.y, to.x, to.y);
-        std::vector<uint32_t> const entries = Nearest(from.x, from.y, params.entryRadius, params.entryCount);
-        std::vector<uint32_t> const exits = Nearest(to.x, to.y, params.entryRadius, params.entryCount);
-        if (entries.empty() || exits.empty())
+        std::vector<uint32_t> entries;
+        for (uint32_t id : Nearest(from.x, from.y, params.entryRadius, params.entryCount * 8))
+            if (entries.size() < params.entryCount &&
+                Distance2d(nodes[id].x, nodes[id].y, to.x, to.y) <=
+                    plan.directYards + EntryBackslide * Distance2d(nodes[id].x, nodes[id].y, from.x, from.y))
+                entries.push_back(id);
+        if (entries.empty())
             return plan;
 
         uint32_t const start = uint32_t(nodes.size());
-        uint32_t const goal = start + 1;
-        float const bar = params.offRoadFactor * plan.directYards;
+        float best = params.offRoadFactor * plan.directYards;
+        uint32_t bestNode = start;
         float const ellipse = params.maxDetour * plan.directYards + 2.0f * params.entryRadius;
-        std::unordered_map<uint32_t, float> exitCost;
-        for (uint32_t id : exits)
-            exitCost[id] = params.offRoadFactor * Distance2d(nodes[id].x, nodes[id].y, to.x, to.y);
 
-        auto heuristic = [&](uint32_t id)
-        { return id == goal ? 0.0f : Distance2d(nodes[id].x, nodes[id].y, to.x, to.y); };
+        auto heuristic = [&](uint32_t id) { return Distance2d(nodes[id].x, nodes[id].y, to.x, to.y); };
 
         using Entry = std::pair<float, uint32_t>;
         std::priority_queue<Entry, std::vector<Entry>, std::greater<Entry>> open;
@@ -209,7 +211,7 @@ public:
         auto relax = [&](uint32_t from_, uint32_t id, float g)
         {
             auto const known = cost.find(id);
-            if ((known != cost.end() && known->second <= g) || g + heuristic(id) >= bar)
+            if ((known != cost.end() && known->second <= g) || g + heuristic(id) >= best)
                 return;
             cost[id] = g;
             parent[id] = from_;
@@ -220,7 +222,6 @@ public:
             relax(start, id, params.offRoadFactor * Distance2d(from.x, from.y, nodes[id].x, nodes[id].y));
 
         size_t expansions = 0;
-        bool reached = false;
         while (!open.empty())
         {
             auto const [f, id] = open.top();
@@ -228,19 +229,19 @@ public:
             float const g = cost[id];
             if (f > g + heuristic(id) + 1e-3f)
                 continue;
-            if (id == goal)
-            {
-                reached = true;
+            if (f >= best)
                 break;
-            }
-            if (++expansions > params.maxExpansions)
-                return plan;
             RoadNode const& node = nodes[id];
             if (Distance2d(from.x, from.y, node.x, node.y) + Distance2d(node.x, node.y, to.x, to.y) > ellipse)
                 continue;
-            auto const exit = exitCost.find(id);
-            if (exit != exitCost.end())
-                relax(id, goal, g + exit->second);
+            float const total = g + params.offRoadFactor * heuristic(id);
+            if (total < best)
+            {
+                best = total;
+                bestNode = id;
+            }
+            if (++expansions > params.maxExpansions)
+                break;
             for (auto const& [neighbour, edge] : adjacency[id])
             {
                 if (blocked && blocked->count(edge))
@@ -250,12 +251,12 @@ public:
                 relax(id, neighbour, g + factor * Distance2d(node.x, node.y, next.x, next.y));
             }
         }
-        if (!reached)
+        if (bestNode == start)
             return plan;
 
-        for (uint32_t id = parent[goal]; id != start && plan.nodes.size() <= nodes.size(); id = parent[id])
+        for (uint32_t id = bestNode; id != start && plan.nodes.size() <= nodes.size(); id = parent[id])
             plan.nodes.push_back(id);
-        if (plan.nodes.empty() || plan.nodes.size() > nodes.size())
+        if (plan.nodes.size() > nodes.size())
         {
             plan.nodes.clear();
             return plan;
