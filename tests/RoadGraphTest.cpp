@@ -190,6 +190,35 @@ TEST(RoadGraph, ExpansionCapGivesUp)
     EXPECT_EQ(graph.Plan({0, 30, 0}, {1000, 30, 0}, params).result, PlanResult::NoRoad);
 }
 
+TEST(RoadGraph, LinkJoinsTwoRoadsAcrossAGap)
+{
+    std::vector<RoadNode> nodes;
+    std::vector<RoadEdge> edges;
+    uint32_t const west = AddLine(nodes, edges, 0.0f, 400.0f, 0.0f);
+    uint32_t const east = AddLine(nodes, edges, 560.0f, 1000.0f, 0.0f);
+    edges.push_back({west + 10, east, LinkKind});
+    RoadGraph const graph = Make(nodes, edges);
+    RoadPlan const plan = graph.Plan({0, 30, 0}, {1000, 30, 0}, PlanParams{});
+    ASSERT_EQ(plan.result, PlanResult::Used);
+    EXPECT_NE(std::find(plan.nodes.begin(), plan.nodes.end(), east), plan.nodes.end());
+}
+
+TEST(RoadGraph, RoadIsPreferredOverASlightlyShorterLink)
+{
+    RoadGraph const graph = Make({{0, 0, 0}, {500, 100, 0}, {1000, 0, 0}}, {{0, 1, 1}, {1, 2, 1}, {0, 2, LinkKind}});
+    RoadPlan const plan = graph.Plan({0, -10, 0}, {1000, -10, 0}, PlanParams{});
+    ASSERT_EQ(plan.result, PlanResult::Used);
+    EXPECT_NE(std::find(plan.nodes.begin(), plan.nodes.end(), 1u), plan.nodes.end());
+}
+
+TEST(RoadRules, EntryRadiusGrowsWithTheTrip)
+{
+    EXPECT_FLOAT_EQ(ParamsForTrip(150.0f).entryRadius, 80.0f);
+    EXPECT_FLOAT_EQ(ParamsForTrip(600.0f).entryRadius, 150.0f);
+    EXPECT_FLOAT_EQ(ParamsForTrip(5000.0f).entryRadius, 250.0f);
+    EXPECT_FLOAT_EQ(ParamsForTrip(600.0f).maxDetour, PlanParams{}.maxDetour);
+}
+
 TEST(RoadRules, OffsetIsPerpendicularToTheRoad)
 {
     Point const left = OffsetWaypoint({0, 0, 5}, {10, 0, 5}, 1, 2.0f);

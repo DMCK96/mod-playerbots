@@ -254,6 +254,43 @@ inline size_t PauseCutIndex(size_t pointCount, float u)
     size_t const pick = lo + size_t(std::floor(std::clamp(u, 0.0f, 1.0f) * float(hi - lo + 1)));
     return std::min(pick, hi);
 }
+
+constexpr float MinLaneYards = 0.6f;
+constexpr float MaxLaneYards = 2.0f;
+
+// A bot's own sideways offset from the centre of every path, signed by side; fixed per seed so a bot keeps its lane.
+inline float LaneYards(uint32_t seed)
+{
+    seed ^= seed >> 16;
+    seed *= 0x7feb352du;
+    seed ^= seed >> 15;
+    seed *= 0x846ca68bu;
+    seed ^= seed >> 16;
+    float const width = MinLaneYards + (MaxLaneYards - MinLaneYards) * float(seed % 1000u) / 999.0f;
+    return (seed & 0x10000u) ? width : -width;
+}
+
+// Share of the lane offset at each point, given the distance walked to it: 0 at both ends, easing to 1 over
+// `taperYards` (smoothstep), so a path never swings from one side to the other.
+inline std::vector<float> LaneWeights(std::vector<float> const& along, float taperYards)
+{
+    std::vector<float> weights(along.size(), 0.0f);
+    if (along.size() < 3 || taperYards <= 0.0f)
+        return weights;
+    float const total = along.back();
+    for (size_t i = 1; i + 1 < along.size(); ++i)
+    {
+        float const t = std::clamp(std::min(along[i], total - along[i]) / taperYards, 0.0f, 1.0f);
+        weights[i] = t * t * (3.0f - 2.0f * t);
+    }
+    return weights;
+}
+
+// A partial path that ends beside its target but a floor above or below it.
+inline bool IsFloorMiss(float endX, float endY, float endZ, float x, float y, float z)
+{
+    return std::hypot(endX - x, endY - y) <= 8.0f && std::fabs(endZ - z) > 3.0f;
+}
 }  // namespace HumanMovementRules
 
 #endif

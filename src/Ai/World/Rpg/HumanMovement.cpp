@@ -8,12 +8,14 @@
 
 #include "CellImpl.h"
 #include "Creature.h"
+#include "DetourNavMeshQuery.h"
 #include "G3D/Vector2.h"
 #include "GridNotifiers.h"
 #include "GridNotifiersImpl.h"
 #include "IVMapMgr.h"
 #include "Log.h"
 #include "Map.h"
+#include "MapDefines.h"
 #include "Player.h"
 #include "PlayerbotAIConfig.h"
 #include "Random.h"
@@ -21,12 +23,14 @@
 #include "World.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cmath>
 #include <ctime>
 #include <fstream>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -48,6 +52,9 @@ constexpr float LiveRadiusPlace = 20.0f;
 constexpr float LiveScanMaxDistance = 300.0f;
 constexpr float MaxSegmentTurnCos = 0.26f;  // cos(75 degrees): sharper turns stay on the stock path
 constexpr size_t MinCurvePoints = 5;
+constexpr float LaneTaperYards = 8.0f;
+constexpr float SpotMeshHorizontal = 1.5f;
+constexpr float SpotMeshVertical = 2.5f;
 
 struct Radii
 {
@@ -235,10 +242,83 @@ struct Counters
     std::atomic<uint64> roadAbandons{0};
     std::atomic<uint64> roadMicros{0};
     std::atomic<uint64> micros[3]{};
+    std::atomic<uint64> straight[4]{};
+    std::atomic<uint64> snaps{0};
+    std::atomic<uint64> snapCentiyards{0};
+    std::atomic<uint64> floorMisses{0};
+    std::atomic<uint64> approaches{0};
+    std::atomic<uint64> teleports{0};
     std::atomic<uint32> nextLog{0};
 };
 
 Counters counters;
+
+// One example position per kind of pathing failure and log interval, to look at in game.
+struct PathSample
+{
+    bool set{false};
+    uint32 mapId{0};
+    G3D::Vector3 from;
+    G3D::Vector3 to;
+};
+
+constexpr size_t SampleStraight = 0;
+constexpr size_t SampleFloorMiss = 1;
+constexpr size_t SampleTeleport = 2;
+std::mutex samplesLock;
+std::array<PathSample, 3> samples;
+
+void KeepSample(size_t slot, uint32 mapId, G3D::Vector3 const& from, G3D::Vector3 const& to)
+{
+    std::lock_guard<std::mutex> guard(samplesLock);
+    if (!samples[slot].set)
+        samples[slot] = {true, mapId, from, to};
+}
+
+std::string DescribeSample(PathSample const& sample)
+{
+    if (!sample.set)
+        return "-";
+    return Acore::StringFormat("map {} ({:.1f}, {:.1f}, {:.1f}) -> ({:.1f}, {:.1f}, {:.1f})", sample.mapId,
+                               sample.from.x, sample.from.y, sample.from.z, sample.to.x, sample.to.y, sample.to.z);
+}
+
+void LogPathing(uint32 interval)
+{
+    std::array<PathSample, 3> taken;
+    {
+        std::lock_guard<std::mutex> guard(samplesLock);
+        taken = samples;
+        samples = {};
+    }
+    uint64 straight[4];
+    uint64 straightTotal = 0;
+    for (size_t why = 0; why < 4; ++why)
+        straightTotal += straight[why] = counters.straight[why].exchange(0);
+    uint64 const snaps = counters.snaps.exchange(0);
+    uint64 const snapCentiyards = counters.snapCentiyards.exchange(0);
+    LOG_INFO("playerbots",
+             "coa pathing (last {}s): straight lines {} (no tile {}, start off mesh {}, end off mesh {}, no route {}), "
+             "snapped {} (avg {:.1f} yd), floor misses {} (approached {}), stuck teleports {}; "
+             "samples: straight {}, floor miss {}, teleport {}",
+             interval, straightTotal, straight[size_t(Straight::NoTile)], straight[size_t(Straight::StartOffMesh)],
+             straight[size_t(Straight::EndOffMesh)], straight[size_t(Straight::NoRoute)], snaps,
+             snaps ? double(snapCentiyards) / double(snaps) / 100.0 : 0.0, counters.floorMisses.exchange(0),
+             counters.approaches.exchange(0), counters.teleports.exchange(0), DescribeSample(taken[SampleStraight]),
+             DescribeSample(taken[SampleFloorMiss]), DescribeSample(taken[SampleTeleport]));
+}
+
+dtQueryFilter const& BotMeshFilter()
+{
+    static dtQueryFilter const filter = []()
+    {
+        dtQueryFilter f;
+        f.setIncludeFlags(NAV_GROUND | NAV_WATER);
+        f.setExcludeFlags(NAV_MAGMA | NAV_SLIME | NAV_GROUND_STEEP);
+        return f;
+    }();
+    return filter;
+}
 
 void MaybeLog()
 {
@@ -275,7 +355,7 @@ void MaybeLog()
     uint64 const roadMicros = counters.roadMicros.exchange(0);
     uint64 const roadSearches = roadPlans - std::min(roadPlans, roadNoGraph);
     LOG_INFO("playerbots",
-             "coa movement (last {}s): spots {} (overlap {} = {:.1f}%, retries {}, fallbacks {}), curved {} plain {}, "
+             "coa movement (last {}s): spots {} (overlap {} = {:.1f}%, retries {}, fallbacks {}), lanes {} plain {}, "
              "dwells {} (avg {:.1f}s), hops {}, emotes {}, cost: pick {:.1f}us avg, launch {:.1f}us avg, "
              "targets {} (repeat {:.1f}%, live scans {}, occupancy hub {:.1f} spread {:.1f} place {:.1f}, "
              "choose {:.1f}us avg), pauses {}, road plans {} (used {}, no graph {}, no road {}, too long {}), "
@@ -290,6 +370,7 @@ void MaybeLog()
              counters.pauses.exchange(0), roadPlans, counters.roadUsed.exchange(0), roadNoGraph,
              counters.roadNoRoad.exchange(0), counters.roadTooLong.exchange(0), counters.roadWaypoints.exchange(0),
              counters.roadAbandons.exchange(0), roadSearches ? double(roadMicros) / double(roadSearches) : 0.0);
+    LogPathing(interval);
 }
 
 uint32 LivePlayersNear(Player* bot, WorldPosition const& pos, float radius)
@@ -379,9 +460,13 @@ WorldPosition PickSpotNear(Player* bot, Map* map, WorldPosition const& anchor, S
         float const ground = map->GetHeight(phase, x, y, anchor.GetPositionZ() + 2.0f);
         if (!UsableHeight(ground))
             continue;
-        if (!open && std::fabs(ground - anchor.GetPositionZ()) > 4.0f)
+        if (std::fabs(ground - anchor.GetPositionZ()) > (open ? 8.0f : 4.0f))
             continue;
         if (map->IsInWater(phase, x, y, ground, collision))
+            continue;
+        G3D::Vector3 onMesh;
+        if (HasMeshTile(map, x, y, ground) &&
+            !NearestMeshPoint(map, x, y, ground, SpotMeshHorizontal, SpotMeshVertical, onMesh))
             continue;
         if (!open && !map->isInLineOfSight(ax, ay, anchor.GetPositionZ() + 1.5f, x, y, ground + 1.5f, phase,
                                            LINEOFSIGHT_CHECK_VMAP, VMAP::ModelIgnoreFlags::Nothing))
@@ -573,31 +658,114 @@ bool Humanize(Player* bot, Movement::PointsArray const& in, Movement::PointsArra
             return false;
     }
 
-    out = in;
     Map* map = bot->GetMap();
     uint32 const phase = bot->GetPhaseMask();
     float const collision = bot->GetCollisionHeight();
-    uint32 shifted = 0;
-    for (size_t i = 2; i + 2 < in.size() && shifted < 4; i += 3)
+    G3D::Vector3 const& end = in.back();
+    PositionFullTerrainStatus status;
+    map->GetFullTerrainStatusForPosition(phase, end.x, end.y, end.z, collision, status);
+    if (!status.outdoors)
+        return false;
+
+    std::vector<float> along(in.size(), 0.0f);
+    for (size_t i = 1; i < in.size(); ++i)
+        along[i] = along[i - 1] + std::hypot(in[i].x - in[i - 1].x, in[i].y - in[i - 1].y);
+    std::vector<float> const weights = HumanMovementRules::LaneWeights(along, LaneTaperYards);
+    float const lane = HumanMovementRules::LaneYards(bot->GetGUID().GetCounter());
+
+    out = in;
+    auto const clear = [&](G3D::Vector3 const& a, G3D::Vector3 const& b)
     {
+        return map->isInLineOfSight(a.x, a.y, a.z + 1.5f, b.x, b.y, b.z + 1.5f, phase, LINEOFSIGHT_CHECK_VMAP,
+                                    VMAP::ModelIgnoreFlags::Nothing);
+    };
+    for (size_t i = 1; i + 1 < in.size(); ++i)
+    {
+        if (weights[i] <= 0.0f)
+            continue;
         G3D::Vector2 dir(in[i + 1].x - in[i - 1].x, in[i + 1].y - in[i - 1].y);
         float const length = dir.length();
         if (length < 0.01f)
             continue;
         dir /= length;
-        float const offset = frand(1.0f, 2.5f) * (urand(0, 1) ? 1.0f : -1.0f);
+        float const offset = lane * weights[i];
         float const x = in[i].x - dir.y * offset;
         float const y = in[i].y + dir.x * offset;
         float const z = map->GetHeight(phase, x, y, in[i].z + 1.0f);
         if (!UsableHeight(z) || std::fabs(z - in[i].z) > 1.2f || map->IsInWater(phase, x, y, z, collision))
             continue;
-        if (!map->isInLineOfSight(in[i].x, in[i].y, in[i].z + 1.5f, x, y, z + 1.5f, phase, LINEOFSIGHT_CHECK_VMAP,
-                                  VMAP::ModelIgnoreFlags::Nothing))
+        G3D::Vector3 const shifted(x, y, z);
+        if (!clear(in[i], shifted) || !clear(out[i - 1], shifted) || !clear(shifted, in[i + 1]))
             continue;
-        out[i] = G3D::Vector3(x, y, z);
-        ++shifted;
+        out[i] = shifted;
     }
     return true;
+}
+
+bool NearestMeshPoint(Map* map, float x, float y, float z, float horizontal, float vertical, G3D::Vector3& out)
+{
+    dtNavMeshQuery const* query = map->GetMapCollisionData().GetMMapData().GetNavMeshQuery();
+    if (!query)
+        return false;
+    float const point[3] = {y, z, x};
+    float const extents[3] = {horizontal, vertical, horizontal};
+    dtPolyRef ref = 0;
+    float closest[3] = {0.0f, 0.0f, 0.0f};
+    if (dtStatusFailed(query->findNearestPoly(point, extents, &BotMeshFilter(), &ref, closest)) || !ref)
+        return false;
+    out = G3D::Vector3(closest[2], closest[0], closest[1]);
+    return true;
+}
+
+bool HasMeshTile(Map* map, float x, float y, float z)
+{
+    dtNavMesh const* mesh = map->GetMapCollisionData().GetMMapData().GetNavMesh();
+    if (!mesh)
+        return false;
+    float const point[3] = {y, z, x};
+    int tx = -1;
+    int ty = -1;
+    mesh->calcTileLoc(point, &tx, &ty);
+    return tx >= 0 && ty >= 0 && mesh->getTileAt(tx, ty, 0) != nullptr;
+}
+
+float PoiHeight(Map* map, float x, float y)
+{
+    float const terrain = map->GetHeight(x, y, MAX_HEIGHT, false);
+    G3D::Vector3 onMesh;
+    if (UsableHeight(terrain) && NearestMeshPoint(map, x, y, terrain, 3.0f, 4.0f, onMesh))
+        return onMesh.z;
+    return map->GetHeight(x, y, MAX_HEIGHT);
+}
+
+void NoteStraight(Straight why, uint32 mapId, G3D::Vector3 const& from, G3D::Vector3 const& to)
+{
+    counters.straight[size_t(why)].fetch_add(1, std::memory_order_relaxed);
+    KeepSample(SampleStraight, mapId, from, to);
+    MaybeLog();
+}
+
+void NoteSnap(float yards)
+{
+    counters.snaps.fetch_add(1, std::memory_order_relaxed);
+    counters.snapCentiyards.fetch_add(uint64(yards * 100.0f), std::memory_order_relaxed);
+}
+
+void NoteFloorMiss(bool approached, uint32 mapId, G3D::Vector3 const& from, G3D::Vector3 const& to)
+{
+    counters.floorMisses.fetch_add(1, std::memory_order_relaxed);
+    if (approached)
+        counters.approaches.fetch_add(1, std::memory_order_relaxed);
+    else
+        KeepSample(SampleFloorMiss, mapId, from, to);
+    MaybeLog();
+}
+
+void NoteStuckTeleport(uint32 mapId, G3D::Vector3 const& from, G3D::Vector3 const& to)
+{
+    counters.teleports.fetch_add(1, std::memory_order_relaxed);
+    KeepSample(SampleTeleport, mapId, from, to);
+    MaybeLog();
 }
 
 void NoteDwell(uint32 ms)

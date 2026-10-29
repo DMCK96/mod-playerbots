@@ -142,6 +142,9 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
             bot->GetName(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(), bot->GetMapId(),
             dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ(), dest.GetMapId(), bot->GetZoneId(),
             zone_name);
+        HumanMovement::NoteStuckTeleport(bot->GetMapId(),
+                                         G3D::Vector3(bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ()),
+                                         G3D::Vector3(dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ()));
         bot->RemoveAurasWithInterruptFlags(AURA_INTERRUPT_FLAG_TELEPORTED | AURA_INTERRUPT_FLAG_CHANGE_MAP);
         return bot->TeleportTo(dest);
     }
@@ -153,6 +156,11 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
     float dis = bot->GetExactDist(target);
     if (dis < pathFinderDis)
     {
+        if (onRoad && !RoadLegWalkable(target))
+        {
+            AbandonRoadRoute();
+            return MoveFarTo(dest);
+        }
         return MoveHumanTo(target.GetMapId(), target.GetPositionX(), target.GetPositionY(), target.GetPositionZ(),
                            MovementPriority::MOVEMENT_NORMAL,
                            RoutePauseChance(dest, target.GetPositionX(), target.GetPositionY()));
@@ -266,7 +274,8 @@ void NewRpgBaseAction::PlanRoadRoute(WorldPosition const& dest)
     auto const started = std::chrono::steady_clock::now();
     RoadRules::RoadPlan const plan =
         graph->Plan({bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ()},
-                    {dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ()}, RoadRules::PlanParams{},
+                    {dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ()},
+                    RoadRules::ParamsForTrip(bot->GetExactDist2d(dest.GetPositionX(), dest.GetPositionY())),
                     blocked.empty() ? nullptr : &blocked);
     auto const micros =
         std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - started).count();
@@ -331,14 +340,22 @@ WorldPosition NewRpgBaseAction::RoadLegTarget(WorldPosition const& dest)
 
     road.leg = leg;
     WorldPosition const& node = road.points[leg];
-    float const x = node.GetPositionX();
-    float const y = node.GetPositionY();
+    float x = node.GetPositionX();
+    float y = node.GetPositionY();
     float z = node.GetPositionZ();
     float ground = bot->GetMap()->GetHeight(bot->GetPhaseMask(), x, y, z + 10.0f, true, 50.0f);
     if (ground <= INVALID_HEIGHT)
         ground = bot->GetMap()->GetHeight(bot->GetPhaseMask(), x, y, bot->GetPositionZ() + 100.0f, true, 400.0f);
     if (ground > INVALID_HEIGHT)
         z = ground;
+    // Road nodes carry the terrain height, which is wrong on bridges and in towns: aim at the navmesh there.
+    G3D::Vector3 onMesh;
+    if (HumanMovement::NearestMeshPoint(bot->GetMap(), x, y, z, 4.0f, 6.0f, onMesh))
+    {
+        x = onMesh.x;
+        y = onMesh.y;
+        z = onMesh.z;
+    }
 
     // Each bot keeps to its own side of the road, 1-3 yards off the centreline.
     uint32 const counter = bot->GetGUID().GetCounter();
@@ -352,6 +369,17 @@ WorldPosition NewRpgBaseAction::RoadLegTarget(WorldPosition const& dest)
         !bot->GetMap()->IsInWater(bot->GetPhaseMask(), sx, sy, sz, bot->GetCollisionHeight()))
         return WorldPosition(bot->GetMapId(), sx, sy, sz);
     return WorldPosition(bot->GetMapId(), x, y, z);
+}
+
+// A leg the navmesh cannot walk, or walks only a long way round, crosses a gap the road file guessed wrong
+// (a link over a river or a ravine, a painted road under a wall).
+bool NewRpgBaseAction::RoadLegWalkable(WorldPosition const& target)
+{
+    PathGenerator leg(bot);
+    leg.CalculatePath(target.GetPositionX(), target.GetPositionY(), target.GetPositionZ());
+    if (leg.GetPathType() & (PATHFIND_NOPATH | PATHFIND_NOT_USING_PATH | PATHFIND_SHORTCUT))
+        return false;
+    return leg.getPathLength() <= 2.0f * bot->GetExactDist(target) + 30.0f;
 }
 
 void NewRpgBaseAction::AbandonRoadRoute()
@@ -477,7 +505,8 @@ bool NewRpgBaseAction::MoveRandomNear(float moveStep, MovementPriority priority,
 bool NewRpgBaseAction::MoveHumanTo(uint32 mapId, float x, float y, float z, MovementPriority priority,
                                    float pauseChance)
 {
-    auto const stock = [&]() { return MoveTo(mapId, x, y, z, false, false, false, true, priority); };
+    G3D::Vector3 dest(x, y, z);
+    auto const stock = [&]() { return MoveTo(mapId, dest.x, dest.y, dest.z, false, false, false, true, priority); };
 
     if ((!sPlayerbotAIConfig.coaSmoothPaths && !sPlayerbotAIConfig.coaPolish) || mapId != bot->GetMapId() ||
         bot->IsFlying() || bot->isSwimming() || bot->GetVehicle() || bot->HasUnitMovementFlag(MOVEMENTFLAG_WATERWALKING))
@@ -491,9 +520,34 @@ bool NewRpgBaseAction::MoveHumanTo(uint32 mapId, float x, float y, float z, Move
 
     {
         HumanMovement::CostTimer timer(HumanMovement::CostSlotLaunch);
+        Map* map = bot->GetMap();
+        G3D::Vector3 onMesh;
+        if (HumanMovement::HasMeshTile(map, x, y, z) &&
+            !HumanMovement::NearestMeshPoint(map, x, y, z, 1.0f, 2.5f, onMesh) &&
+            HumanMovement::NearestMeshPoint(map, x, y, z, snapHorizontalYards, snapVerticalYards, onMesh))
+        {
+            HumanMovement::NoteSnap((onMesh - dest).length());
+            dest = onMesh;
+        }
+
+        G3D::Vector3 const here(bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ());
         PathGenerator gen(bot);
-        gen.CalculatePath(x, y, z);
+        gen.CalculatePath(dest.x, dest.y, dest.z);
         uint32 const blocked = PATHFIND_NOPATH | PATHFIND_NOT_USING_PATH | PATHFIND_SHORTCUT;
+        if (!(gen.GetPathType() & blocked) && (gen.GetPathType() & PATHFIND_INCOMPLETE))
+        {
+            G3D::Vector3 const reached = gen.GetActualEndPosition();
+            if (HumanMovementRules::IsFloorMiss(reached.x, reached.y, reached.z, dest.x, dest.y, dest.z))
+            {
+                G3D::Vector3 way;
+                bool const approached = ApproachOnFloor(dest, way);
+                HumanMovement::NoteFloorMiss(approached, mapId, here, dest);
+                if (approached)
+                    gen.CalculatePath(way.x, way.y, way.z);
+            }
+        }
+        if (gen.GetPathType() & blocked)
+            HumanMovement::NoteStraight(StraightReason(dest), mapId, here, dest);
         Movement::PointsArray const& raw = gen.GetPath();
         if (!(gen.GetPathType() & blocked) && raw.size() >= 3)
         {
@@ -540,6 +594,56 @@ bool NewRpgBaseAction::MoveHumanTo(uint32 mapId, float x, float y, float z, Move
         }
     }
     return stock();
+}
+
+bool NewRpgBaseAction::ApproachOnFloor(G3D::Vector3 const& target, G3D::Vector3& way)
+{
+    NewRpgInfo& info = botAI->rpgInfo;
+    if (info.approachMissTs && GetMSTimeDiffToNow(info.approachMissTs) < approachRetryMs &&
+        info.approachMissPos.GetExactDist(target.x, target.y, target.z) < 3.0f)
+        return false;
+
+    Map* map = bot->GetMap();
+    PathGenerator probe(bot);
+    for (float radius : {3.0f, 6.0f, 10.0f})
+    {
+        for (int step = 0; step < 6; ++step)
+        {
+            float const angle = float(M_PI) * float(step) / 3.0f + radius;
+            G3D::Vector3 spot;
+            if (!HumanMovement::NearestMeshPoint(map, target.x + radius * std::cos(angle),
+                                                 target.y + radius * std::sin(angle), target.z, 1.5f, 2.5f, spot) ||
+                std::fabs(spot.z - target.z) > 3.0f)
+                continue;
+            probe.CalculatePath(spot.x, spot.y, spot.z);
+            if (probe.GetPathType() == PATHFIND_NORMAL)
+            {
+                way = spot;
+                return true;
+            }
+            break;
+        }
+    }
+    info.approachMissPos = WorldPosition(bot->GetMapId(), target.x, target.y, target.z);
+    info.approachMissTs = getMSTime();
+    return false;
+}
+
+HumanMovement::Straight NewRpgBaseAction::StraightReason(G3D::Vector3 const& dest)
+{
+    Map* map = bot->GetMap();
+    float const x = bot->GetPositionX();
+    float const y = bot->GetPositionY();
+    float const z = bot->GetPositionZ();
+    if (!HumanMovement::HasMeshTile(map, x, y, z) || !HumanMovement::HasMeshTile(map, dest.x, dest.y, dest.z))
+        return HumanMovement::Straight::NoTile;
+    G3D::Vector3 onMesh;
+    // The box PathGenerator searches before it gives up on a start or end polygon.
+    if (!HumanMovement::NearestMeshPoint(map, x, y, z, 3.0f, 50.0f, onMesh))
+        return HumanMovement::Straight::StartOffMesh;
+    if (!HumanMovement::NearestMeshPoint(map, dest.x, dest.y, dest.z, 3.0f, 50.0f, onMesh))
+        return HumanMovement::Straight::EndOffMesh;
+    return HumanMovement::Straight::NoRoute;
 }
 
 float NewRpgBaseAction::RoutePauseChance(WorldPosition const& dest, float legX, float legY)
@@ -1285,7 +1389,7 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
             if (bot->GetDistance2d(dx, dy) >= 1500.0f)
                 continue;
 
-            float dz = std::max(bot->GetMap()->GetHeight(dx, dy, MAX_HEIGHT), bot->GetMap()->GetWaterLevel(dx, dy));
+            float dz = std::max(HumanMovement::PoiHeight(bot->GetMap(), dx, dy), bot->GetMap()->GetWaterLevel(dx, dy));
 
             if (dz == INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
                 continue;
@@ -1357,7 +1461,7 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
         if (bot->GetDistance2d(dx, dy) >= 1500.0f)
             continue;
 
-        float dz = std::max(bot->GetMap()->GetHeight(dx, dy, MAX_HEIGHT), bot->GetMap()->GetWaterLevel(dx, dy));
+        float dz = std::max(HumanMovement::PoiHeight(bot->GetMap(), dx, dy), bot->GetMap()->GetWaterLevel(dx, dy));
 
         if (dz == INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
             continue;

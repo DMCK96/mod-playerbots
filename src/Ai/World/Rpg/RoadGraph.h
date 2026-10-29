@@ -31,8 +31,11 @@ struct RoadNode
 struct RoadEdge
 {
     uint32_t a, b;
-    uint8_t kind;  // 1 road, 2 trail
+    uint8_t kind;  // 1 road, 2 trail, 3 link across a gap the textures miss (bridge, gate, faded paint)
 };
+
+constexpr uint8_t LinkKind = 3;
+constexpr float LinkCostFactor = 1.25f;  // links are unverified: a road of the same length wins
 
 struct Point
 {
@@ -54,6 +57,14 @@ struct PlanParams
     float minRoadShare = 0.5f;   // road yards needed against the direct distance
     size_t maxExpansions = 20000;
 };
+
+// Longer trips may walk further to reach a road: a quarter of the trip, between 80 and 250 yards.
+inline PlanParams ParamsForTrip(float directYards)
+{
+    PlanParams params;
+    params.entryRadius = std::clamp(0.25f * directYards, 80.0f, 250.0f);
+    return params;
+}
 
 enum class PlanResult : uint8_t
 {
@@ -235,7 +246,8 @@ public:
                 if (blocked && blocked->count(edge))
                     continue;
                 RoadNode const& next = nodes[neighbour];
-                relax(id, neighbour, g + Distance2d(node.x, node.y, next.x, next.y));
+                float const factor = edges[edge].kind == LinkKind ? LinkCostFactor : 1.0f;
+                relax(id, neighbour, g + factor * Distance2d(node.x, node.y, next.x, next.y));
             }
         }
         if (!reached)

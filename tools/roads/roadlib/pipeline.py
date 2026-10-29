@@ -4,13 +4,14 @@ import math
 import numpy as np
 
 from .adt import SIZE, pixel_to_world, world_to_pixel
-from .graph import RoadGraphBuilder
+from .graph import LINK, RoadGraphBuilder, link_components
 from .raster import ROAD, TRAIL, pad_tile
 from .skeleton import thin, trace
 
 PAD = 32
 SPUR_YARDS, BRIDGE_YARDS, BRIDGE_DEGREES = 15.0, 12.0, 35.0
 SIMPLIFY_YARDS, EDGE_YARDS, COMPONENT_YARDS = 2.0, 40.0, 100.0
+JOIN_YARDS, LINK_YARDS = 30.0, 180.0
 
 
 def tile_polylines(padded, tile_x, tile_y, pad=PAD):
@@ -49,6 +50,7 @@ def assemble(lines, heights, tile_count):
     builder.split_long(EDGE_YARDS)
     builder.drop_small_components(COMPONENT_YARDS)
     flat, edges = builder.finish()
+    edges += link_components(flat, edges, JOIN_YARDS, LINK_YARDS)
 
     samplers = {}
     nodes = []
@@ -60,11 +62,11 @@ def assemble(lines, heights, tile_count):
         sampler = samplers[key]
         nodes.append((x, y, sampler.z(a, b) if sampler is not None else 0.0))
 
-    yards = {ROAD: 0.0, TRAIL: 0.0}
+    yards = {ROAD: 0.0, TRAIL: 0.0, LINK: 0.0}
     for a, b, kind in edges:
         yards[kind] = yards.get(kind, 0.0) + math.dist(flat[a], flat[b])
     stats = {'tiles': tile_count, 'nodes': len(nodes), 'edges': len(edges), 'road_yards': yards[ROAD],
-             'trail_yards': yards[TRAIL]}
+             'trail_yards': yards[TRAIL], 'link_yards': yards[LINK]}
     return nodes, edges, stats
 
 

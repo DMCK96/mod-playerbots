@@ -111,6 +111,9 @@ struct NewRpgInfo
         bool decided{false};
     };
     RoadRoute road;
+    // Last target whose floor could not be reached, so the search is not repeated every tick.
+    WorldPosition approachMissPos{};
+    uint32 approachMissTs{0};
     // END MOVE_FAR
 
     using RpgData = std::variant<

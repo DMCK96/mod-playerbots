@@ -81,7 +81,8 @@ def build(args):
         map_id, tile_x, tile_y = (int(v) for v in spec.split('_'))
         previews.setdefault(map_id, set()).add((tile_x, tile_y))
 
-    totals = {'maps': 0, 'skipped': 0, 'nodes': 0, 'edges': 0, 'road_yards': 0.0, 'trail_yards': 0.0}
+    totals = {'maps': 0, 'skipped': 0, 'nodes': 0, 'edges': 0, 'road_yards': 0.0, 'trail_yards': 0.0,
+              'link_yards': 0.0}
     with multiprocessing.Pool(args.jobs, initializer=_open, initargs=(args.client, args.trails)) as pool:
         for row in sorted(parse_map_dbc(dbc), key=lambda r: r.id):
             if wanted is not None and row.id not in wanted:
@@ -122,14 +123,15 @@ def build(args):
                     _preview(os.path.join(args.preview, '%d_%d_%d.png' % (row.id, tile_x, tile_y)), tile,
                              tile_x, tile_y, nodes, edges)
             totals['maps'] += 1
-            for key in ('nodes', 'edges', 'road_yards', 'trail_yards'):
+            for key in ('nodes', 'edges', 'road_yards', 'trail_yards', 'link_yards'):
                 totals[key] += stats[key]
-            print('map %d %s: tiles %d, nodes %d, edges %d, road %.0f yd, trail %.0f yd, %.0fs%s'
+            print('map %d %s: tiles %d, nodes %d, edges %d, road %.0f yd, trail %.0f yd, links %.0f yd, %.0fs%s'
                   % (row.id, row.directory, len(classes), stats['nodes'], stats['edges'], stats['road_yards'],
-                     stats['trail_yards'], time.time() - map_started, '' if edges else ' (no file)'), flush=True)
-    print('total: %d maps built, %d skipped, nodes %d, edges %d, road %.0f yd, trail %.0f yd, %.0fs'
+                     stats['trail_yards'], stats['link_yards'], time.time() - map_started,
+                     '' if edges else ' (no file)'), flush=True)
+    print('total: %d maps built, %d skipped, nodes %d, edges %d, road %.0f yd, trail %.0f yd, links %.0f yd, %.0fs'
           % (totals['maps'], totals['skipped'], totals['nodes'], totals['edges'], totals['road_yards'],
-             totals['trail_yards'], time.time() - started))
+             totals['trail_yards'], totals['link_yards'], time.time() - started))
     return 0
 
 

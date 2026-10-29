@@ -148,6 +148,53 @@ TEST(HumanMovementRules, PauseCutIndexNeedsAnInteriorPoint)
     }
 }
 
+TEST(HumanMovementRules, LaneKeepsOneSideAndAModestWidth)
+{
+    bool left = false, right = false;
+    for (uint32_t seed = 0; seed < 64; ++seed)
+    {
+        float const lane = LaneYards(seed);
+        EXPECT_EQ(lane, LaneYards(seed));
+        EXPECT_GE(std::fabs(lane), MinLaneYards);
+        EXPECT_LE(std::fabs(lane), MaxLaneYards);
+        left = left || lane > 0.0f;
+        right = right || lane < 0.0f;
+    }
+    EXPECT_TRUE(left);
+    EXPECT_TRUE(right);
+}
+
+TEST(HumanMovementRules, LaneWeightsEaseInAndOutWithoutReversing)
+{
+    std::vector<float> along;
+    for (int i = 0; i <= 10; ++i)
+        along.push_back(4.0f * i);
+    std::vector<float> const weights = LaneWeights(along, 8.0f);
+    ASSERT_EQ(weights.size(), along.size());
+    EXPECT_FLOAT_EQ(weights.front(), 0.0f);
+    EXPECT_FLOAT_EQ(weights.back(), 0.0f);
+    EXPECT_FLOAT_EQ(weights[5], 1.0f);
+    EXPECT_GT(weights[1], 0.0f);
+    EXPECT_LT(weights[1], weights[2]);
+    for (float w : weights)
+    {
+        EXPECT_GE(w, 0.0f);
+        EXPECT_LE(w, 1.0f);
+    }
+
+    std::vector<float> const shortPath = LaneWeights({0.0f, 3.0f, 6.0f}, 8.0f);
+    EXPECT_GT(shortPath[1], 0.0f);
+    EXPECT_LT(shortPath[1], 1.0f);
+}
+
+TEST(HumanMovementRules, FloorMissIsCloseAcrossButAFloorAway)
+{
+    EXPECT_TRUE(IsFloorMiss(0.0f, 0.0f, 0.0f, 2.0f, 2.0f, 6.0f));
+    EXPECT_TRUE(IsFloorMiss(0.0f, 0.0f, 9.0f, 1.0f, 0.0f, 3.0f));
+    EXPECT_FALSE(IsFloorMiss(0.0f, 0.0f, 0.0f, 2.0f, 2.0f, 2.0f));
+    EXPECT_FALSE(IsFloorMiss(20.0f, 0.0f, 0.0f, 0.0f, 0.0f, 6.0f));
+}
+
 TEST(HumanMovementIntent, ClaimCountsAndReleaseClears)
 {
     IntentTable table;

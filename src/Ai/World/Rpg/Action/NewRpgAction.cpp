@@ -580,8 +580,8 @@ bool NewRpgDoQuestAction::DoIncompleteQuest(NewRpgInfo::DoQuest& data)
 
         float dx = nearestPoi.x, dy = nearestPoi.y;
 
-        // z = MAX_HEIGHT as we do not know accurate z
-        float dz = std::max(bot->GetMap()->GetHeight(dx, dy, MAX_HEIGHT), bot->GetMap()->GetWaterLevel(dx, dy));
+        // no accurate z: the ground the navmesh lies on, else the topmost surface
+        float dz = std::max(HumanMovement::PoiHeight(bot->GetMap(), dx, dy), bot->GetMap()->GetWaterLevel(dx, dy));
 
         // double check for GetQuestPOIPosAndObjectiveIdx
         if (dz == INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
@@ -675,8 +675,8 @@ bool NewRpgDoQuestAction::DoCompletedQuest(NewRpgInfo::DoQuest& data)
         assert(poiInfo.size() > 0);
         // now we get the place to get rewarded
         float dx = poiInfo[0].pos.x, dy = poiInfo[0].pos.y;
-        // z = MAX_HEIGHT as we do not know accurate z
-        float dz = std::max(bot->GetMap()->GetHeight(dx, dy, MAX_HEIGHT), bot->GetMap()->GetWaterLevel(dx, dy));
+        // no accurate z: the ground the navmesh lies on, else the topmost surface
+        float dz = std::max(HumanMovement::PoiHeight(bot->GetMap(), dx, dy), bot->GetMap()->GetWaterLevel(dx, dy));
 
         // double check for GetQuestPOIPosAndObjectiveIdx
         if (dz == INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)

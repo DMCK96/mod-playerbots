@@ -7,6 +7,7 @@
 #ifndef PLAYERBOTS_NEWRPGBASEACTION_H
 #define PLAYERBOTS_NEWRPGBASEACTION_H
 
+#include "HumanMovement.h"
 #include "LastMovementValue.h"
 #include "MovementActions.h"
 #include "NewRpgInfo.h"
@@ -40,6 +41,9 @@ protected:
     bool ForceToWait(uint32 duration, MovementPriority priority = MovementPriority::MOVEMENT_NORMAL);
     bool MoveHumanTo(uint32 mapId, float x, float y, float z,
                      MovementPriority priority = MovementPriority::MOVEMENT_NORMAL, float pauseChance = 0.0f);
+    // A point on the target's own floor with a complete path, for a path that ends a floor above or below it.
+    bool ApproachOnFloor(G3D::Vector3 const& target, G3D::Vector3& way);
+    HumanMovement::Straight StraightReason(G3D::Vector3 const& dest);
     bool LingerNear(float moveStep);
     bool WanderBetweenPlaces();
     float RoutePauseChance(WorldPosition const& dest, float legX, float legY);
@@ -47,6 +51,7 @@ protected:
     void PlanRoadRoute(WorldPosition const& dest);
     WorldPosition RoadLegTarget(WorldPosition const& dest);
     bool OnRoadRoute() const;
+    bool RoadLegWalkable(WorldPosition const& target);
     void AbandonRoadRoute();
     void StandCues(WorldObject* facing = nullptr);
 
@@ -89,6 +94,11 @@ protected:
     const uint32 stuckTime = 90 * 1000;
     // A road leg that stops closing is given up for the direct trip much sooner than a trip is teleported.
     const uint32 roadStuckTime = 20 * 1000;
+    // A destination off the navmesh moves to the nearest walkable point on its floor within these bounds.
+    const float snapHorizontalYards = 8.0f;
+    const float snapVerticalYards = 4.0f;
+    // A target with no way onto its floor is not searched again for this long.
+    const uint32 approachRetryMs = 60 * 1000;
 };
 
 #endif

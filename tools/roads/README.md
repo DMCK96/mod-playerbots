@@ -47,6 +47,12 @@ Restart the worldserver after rebuilding; graphs are cached per map once loaded.
    - Gaps up to 12 yd that keep the trail's direction are bridged.
    - Polylines are simplified and split into edges of at most 40 yd.
    - Pieces under 100 yd in total are dropped.
+5. **Links:** each dead end proposes the nearest node of another piece within 180 yd; shortest first, a proposal
+   is kept while the two pieces are still apart. Gaps up to 30 yd (paint that fades out) become road. Longer
+   ones become links (kind 3): bridges, town gates and city walls are buildings, not painted terrain, so the
+   textures stop at them. Links are not checked against the navmesh here; the server plans over them at a 25 %
+   higher cost, walks each leg on the navmesh and drops a road route whose leg the navmesh cannot walk or only
+   reaches by a long detour, blocking those edges for later trips.
 
 ## File format (version 1, little-endian)
 
@@ -54,7 +60,7 @@ Restart the worldserver after rebuilding; graphs are cached per map once loaded.
 | --- | --- |
 | Header | `char[4] "CRDS"`, `uint32 version = 1`, `uint32 nodeCount`, `uint32 edgeCount` |
 | Node | `float x, y, z` (world coordinates; z is the terrain height, a hint only) |
-| Edge | `uint32 a, uint32 b, uint8 kind` (1 road, 2 trail), 3 zero bytes |
+| Edge | `uint32 a, uint32 b, uint8 kind` (1 road, 2 trail, 3 link), 3 zero bytes |
 
 ## Limits
 

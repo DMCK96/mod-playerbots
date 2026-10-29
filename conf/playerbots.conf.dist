@@ -1696,9 +1696,10 @@ AiPlayerbot.CoaDwell = 1
 # Default: 1 (enabled)
 AiPlayerbot.CoaPolish = 1
 
-# RPG ground moves are launched as a smooth curve through the navmesh path with a slight sideways
-# offset on some points, instead of a straight-edged polyline that every bot walks identically.
-# Moves that fly, swim, ride a vehicle, start indoors or are too short stay on the stock path.
+# RPG ground moves are launched as a smooth curve through the navmesh path, moved into the bot's own
+# lane: a fixed sideways offset of 0.6-2 yards that eases in and out at the ends, so bots on the same
+# route walk side by side instead of in single file. Moves that fly, swim, ride a vehicle, start or end
+# indoors, turn sharply or are too short stay on the stock path.
 # Costs about three times the bytes of a plain move to each player who sees the bot.
 # Default: 1 (enabled)
 AiPlayerbot.CoaSmoothPaths = 1
@@ -1718,8 +1719,8 @@ AiPlayerbot.CoaTargetSpread = 1
 AiPlayerbot.CoaRoutePauseYards = 400
 
 # Percent of trips (of at least AiPlayerbot.CoaRoadMinTrip yards, on foot or mounted) on which a bot
-# follows roads where a road gets it there without a long detour, joining and leaving the road near
-# the ends. Needs road graphs in DataDir/roads/, built from the client with
+# follows roads where a road gets it there without a long detour, joining and leaving the road within
+# a quarter of the trip (80 to 250 yards) of its ends. Needs road graphs in DataDir/roads/, built from the client with
 # modules/mod-playerbots/tools/roads/build_roads.py (see its README); without them these keys do
 # nothing. 0 = bots never follow roads.
 # Default: 75
@@ -1729,9 +1730,11 @@ AiPlayerbot.CoaRoadShare = 75
 # Default: 150
 AiPlayerbot.CoaRoadMinTrip = 150
 
-# Seconds between "coa movement" summary lines in the server log (spots picked, overlap, curve
-# launches, dwell, time spent). 0 = no lines. Use together with "playerbots pmon" to compare
-# the cost with every Coa movement key set to 0.
+# Seconds between "coa movement" summary lines in the server log (spots picked, overlap, lane
+# launches, dwell, time spent) and "coa pathing" lines (moves that fell back to a straight line and
+# why, destinations moved onto the navmesh, paths ending a floor away from their target, stuck
+# teleports, one example position of each). 0 = no lines. Use together with "playerbots pmon" to
+# compare the cost with every Coa movement key set to 0.
 # Default: 60
 AiPlayerbot.CoaMovementMetricsSeconds = 60
 

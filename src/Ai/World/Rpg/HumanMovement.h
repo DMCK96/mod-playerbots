@@ -84,8 +84,29 @@ uint32 StartDelayMs();
 uint32 JitterMs(uint32 baseMs, uint32 seed);
 bool Chance(uint32 percent);
 
-// A curved, slightly different copy of a navmesh path. Returns false when the path should stay as it is.
+// A navmesh path moved into the bot's own lane, a fixed sideways offset that eases in and out at the ends, so
+// bots on one route do not walk in single file. Returns false when the path should stay as it is.
 bool Humanize(Player* bot, Movement::PointsArray const& in, Movement::PointsArray& out);
+
+// The nearest point of the navmesh bots walk on, within `horizontal` yards across and `vertical` up or down.
+bool NearestMeshPoint(Map* map, float x, float y, float z, float horizontal, float vertical, G3D::Vector3& out);
+bool HasMeshTile(Map* map, float x, float y, float z);
+// Ground height for a point known only by x and y (quest areas): the terrain when the navmesh lies on it,
+// otherwise the topmost surface as before.
+float PoiHeight(Map* map, float x, float y);
+
+// Why a move fell back to the core's straight line.
+enum class Straight
+{
+    NoTile,
+    StartOffMesh,
+    EndOffMesh,
+    NoRoute
+};
+void NoteStraight(Straight why, uint32 mapId, G3D::Vector3 const& from, G3D::Vector3 const& to);
+void NoteSnap(float yards);
+void NoteFloorMiss(bool approached, uint32 mapId, G3D::Vector3 const& from, G3D::Vector3 const& to);
+void NoteStuckTeleport(uint32 mapId, G3D::Vector3 const& from, G3D::Vector3 const& to);
 
 void NoteDwell(uint32 ms);
 void NoteHop();

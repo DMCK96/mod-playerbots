@@ -2,7 +2,7 @@ import math
 import random
 import unittest
 
-from roadlib.graph import RoadGraphBuilder
+from roadlib.graph import LINK, RoadGraphBuilder, link_components
 
 
 def line(x0, y0, x1, y1, steps=2):
@@ -94,6 +94,35 @@ class ComponentTest(unittest.TestCase):
         self.assertEqual(len(edges), 1)
         self.assertEqual(edges[0][2], 2)
         self.assertTrue(has_node_near(nodes, 120, 500))
+
+
+class LinkTest(unittest.TestCase):
+    @staticmethod
+    def two_roads(gap):
+        nodes = [(0.0, 0.0), (40.0, 0.0), (80.0, 0.0), (80.0 + gap, 0.0), (120.0 + gap, 0.0)]
+        return nodes, [(0, 1, 1), (1, 2, 1), (3, 4, 1)]
+
+    def test_short_gap_is_joined_as_road(self):
+        nodes, edges = self.two_roads(20.0)
+        self.assertEqual(link_components(nodes, edges, 30.0, 180.0), [(2, 3, 1)])
+
+    def test_wider_gap_gets_a_link(self):
+        nodes, edges = self.two_roads(150.0)
+        self.assertEqual(link_components(nodes, edges, 30.0, 180.0), [(2, 3, LINK)])
+
+    def test_gap_past_the_limit_stays_open(self):
+        nodes, edges = self.two_roads(250.0)
+        self.assertEqual(link_components(nodes, edges, 30.0, 180.0), [])
+
+    def test_dead_end_joins_the_middle_of_another_road(self):
+        nodes = [(0.0, 0.0), (40.0, 0.0), (80.0, 0.0), (40.0, 10.0), (40.0, 60.0)]
+        edges = [(0, 1, 1), (1, 2, 1), (3, 4, 1)]
+        self.assertEqual(link_components(nodes, edges, 30.0, 180.0), [(1, 3, 1)])
+
+    def test_ends_of_one_road_are_not_linked_to_each_other(self):
+        nodes = [(0.0, 0.0), (0.0, 50.0), (10.0, 50.0), (10.0, 0.0)]
+        edges = [(0, 1, 1), (1, 2, 1), (2, 3, 1)]
+        self.assertEqual(link_components(nodes, edges, 30.0, 180.0), [])
 
 
 if __name__ == '__main__':

@@ -2,6 +2,9 @@
 import math
 from collections import defaultdict
 
+LINK = 3
+_LINK_CELL = 32.0
+
 
 def _length(points):
     return sum(math.dist(p, q) for p, q in zip(points, points[1:]))
@@ -204,3 +207,59 @@ class RoadGraphBuilder:
                 seen.add(pair)
                 edges.append((pair[0], pair[1], line.kind))
         return nodes, edges
+
+
+def link_components(nodes, edges, join_yards, link_yards):
+    """Edges that join separate components where the textures stop: each dead end (degree <= 1) proposes the nearest
+    node of another component within `link_yards`. Shortest first, a proposal is kept only while its two components
+    are still apart. Gaps up to `join_yards` become road; longer ones become LINK edges (bridges, gates, faded
+    paint) that the server walks on the navmesh and drops when they fail."""
+    parent = list(range(len(nodes)))
+
+    def find(node):
+        while parent[node] != node:
+            parent[node] = parent[parent[node]]
+            node = parent[node]
+        return node
+
+    degree = defaultdict(int)
+    for a, b, _ in edges:
+        degree[a] += 1
+        degree[b] += 1
+        parent[find(a)] = find(b)
+    component = [find(node) for node in range(len(nodes))]
+
+    grid = defaultdict(list)
+    for node, (x, y) in enumerate(p[:2] for p in nodes):
+        if degree[node]:
+            grid[(math.floor(x / _LINK_CELL), math.floor(y / _LINK_CELL))].append(node)
+    reach = int(math.ceil(link_yards / _LINK_CELL))
+
+    proposals = []
+    for dead in range(len(nodes)):
+        if degree[dead] != 1:
+            continue
+        x, y = nodes[dead][:2]
+        cx, cy = math.floor(x / _LINK_CELL), math.floor(y / _LINK_CELL)
+        best = None
+        for gx in range(cx - reach, cx + reach + 1):
+            for gy in range(cy - reach, cy + reach + 1):
+                for node in grid.get((gx, gy), ()):
+                    if component[node] == component[dead]:
+                        continue
+                    d = math.dist(nodes[node][:2], (x, y))
+                    if d <= link_yards and (best is None or d < best[0]):
+                        best = (d, node)
+        if best is not None:
+            proposals.append((best[0], dead, best[1]))
+
+    parent = list(range(len(nodes)))
+    for a, b, _ in edges:
+        parent[find(a)] = find(b)
+    links = []
+    for d, a, b in sorted(proposals):
+        if find(a) == find(b):
+            continue
+        parent[find(a)] = find(b)
+        links.append((min(a, b), max(a, b), 1 if d <= join_yards else LINK))
+    return links
