@@ -2038,9 +2038,11 @@ void PlayerbotAI::ApplyInstanceStrategies(uint32 mapId, bool tellMaster)
 {
     static const std::vector<std::string> allInstanceStrategies =
     {
-        "aq20", "blacktemple", "bwl", "gruulslair", "hyjal", "icc", "karazhan", "magtheridon", "moltencore", "naxx",
+        "aq20", "blacktemple", "bwl", "coa-other-side", "gruulslair", "hyjal", "icc", "karazhan", "magtheridon", "moltencore", "naxx",
         "onyxia", "rs", "ssc", "sunwell", "tbc-ac", "tbc-mech", "tbc-mgt", "tbc-seth", "tbc-ub", "tempestkeep", "ulduar",
-        "vanilla-rfc", "vanilla-sfk", "vanilla-sm", "voa", "wotlk-an", "wotlk-cos", "wotlk-dtk", "wotlk-eoe",
+        "vanilla-bfd", "vanilla-brd", "vanilla-brs", "vanilla-mara", "vanilla-rfc", "vanilla-rfd", "vanilla-rfk",
+        "vanilla-scholo", "vanilla-sfk", "vanilla-sm", "vanilla-strat", "vanilla-ulda", "vanilla-wc", "voa", "wotlk-an",
+        "wotlk-cos", "wotlk-dtk", "wotlk-eoe",
         "wotlk-fos", "wotlk-gd", "wotlk-hol", "wotlk-hos", "wotlk-nex", "wotlk-occ", "wotlk-ok", "wotlk-os",
         "wotlk-pos", "wotlk-toc", "wotlk-uk", "wotlk-up", "wotlk-vh", "zulaman"
     };
@@ -2057,11 +2059,41 @@ void PlayerbotAI::ApplyInstanceStrategies(uint32 mapId, bool tellMaster)
         case 33:
             strategyName = "vanilla-sfk";  // Shadowfang Keep
             break;
+        case 43:
+            strategyName = "vanilla-wc";  // Wailing Caverns
+            break;
+        case 47:
+            strategyName = "vanilla-rfk";  // Razorfen Kraul
+            break;
+        case 48:
+            strategyName = "vanilla-bfd";  // Blackfathom Deeps
+            break;
+        case 70:
+            strategyName = "vanilla-ulda";  // Uldaman
+            break;
+        case 129:
+            strategyName = "vanilla-rfd";  // Razorfen Downs
+            break;
         case 189:
             strategyName = "vanilla-sm";  // Scarlet Monastery
             break;
+        case 229:
+            strategyName = "vanilla-brs";  // Blackrock Spire
+            break;
+        case 230:
+            strategyName = "vanilla-brd";  // Blackrock Depths
+            break;
         case 249:
             strategyName = "onyxia";  // Onyxia's Lair
+            break;
+        case 289:
+            strategyName = "vanilla-scholo";  // Scholomance
+            break;
+        case 329:
+            strategyName = "vanilla-strat";  // Stratholme
+            break;
+        case 349:
+            strategyName = "vanilla-mara";  // Maraudon
             break;
         case 389:
             strategyName = "vanilla-rfc";  // Ragefire Chasm
@@ -2182,6 +2214,9 @@ void PlayerbotAI::ApplyInstanceStrategies(uint32 mapId, bool tellMaster)
             break;
         case 724:
             strategyName = "rs";  // Ruby Sanctum
+            break;
+        case 937:
+            strategyName = "coa-other-side";  // Road to De Other Side
             break;
         default:
             break;

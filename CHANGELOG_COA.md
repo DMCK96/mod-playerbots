@@ -1,5 +1,69 @@
 # CoA Bots — changelog
 
+## v2.8.1 — Latest CoA core, classic dungeon bosses, battleground fixes (October 2026)
+
+### Highlights
+- **Latest CoA core**: 284 new commits from the public CoA core since 2.8 (full list in the GitHub release notes).
+- **Boss mechanics for the classic dungeons**: bots now handle the bosses of Wailing Caverns, Razorfen Kraul, Razorfen
+  Downs, Blackfathom Deeps, Scarlet Monastery, Uldaman, Blackrock Depths, Blackrock Spire, Stratholme, Scholomance and
+  Maraudon. Thanks to Brytenwally (#45).
+- **Molten Core is back on Heroic, Mythic and Ascended** for servers whose database was created before 11 October.
+- **Self-found bots (optional, off by default)**: with `AiPlayerbot.CoaSelfFound = 1`, bots wear only what they loot,
+  earn from quests or are traded, and random bots level only by playing, up to level 59 by default
+  (`CoaSelfFoundMaxLevel`); at 60 bots are geared as usual for endgame. Existing levels and gear are kept.
+
+### Latest CoA core
+2.8.1 includes 284 new commits of the public CoA core since 2.8, among them:
+- creature magic resistance and the new open-world creature damage, on by default;
+- PvE Power and PvP Power, on by default;
+- cross-faction battleground queues (mod-cfbg), on by default;
+- Road to De Other Side (map 937) restored;
+- name filter for profanity;
+- account-wide friends, opt-in;
+- Wisdomball dungeon quest fixes;
+- gathering nodes moved to their Ascension positions;
+- large batches of dungeon, item, quest and class fixes;
+- many quest and database fixes.
+
+### Fixes
+- **"Loot only" bots**: with "Your own bots can gear themselves" off in the launcher, the bots in your group no longer
+  gear themselves at all (level up, `.levelup`, specialization changes, `autogear`): they wear what they loot, earn from
+  quests or get from you. With it on, "Best gear quality of the bots" now also caps the gear they put on at level up.
+- **Molten Core** was empty on Heroic, Mythic and Ascended on databases created before 11 October: its spawn masks are
+  restored.
+- **Battlegrounds**: safety nets against world server crashes (battleground objects and creatures looked up within
+  bounds, end of battleground scores guarded), and the bots' battleground tactics only run on the battleground's own
+  map. Thanks to nightlund (#52).
+- Manastorm: the Horde teleport pad fixed in 2.8 stays in place.
+
+### Bots
+- **Bloodmage Eternal** tanks enter their form, keep Hypovolemic Shock up on packs and no longer cast Sanguine Rupture
+  (#38, #51).
+- **Classic dungeons**: boss mechanics for Wailing Caverns, Razorfen Kraul, Razorfen Downs, Blackfathom Deeps, Scarlet
+  Monastery, Uldaman, Blackrock Depths, Blackrock Spire, Stratholme, Scholomance and Maraudon. Thanks to Brytenwally (#45).
+- **Road to De Other Side**: boss strategy for the bots. Thanks to steviecraycray (#49).
+- Custom race exclusions now also apply to existing random bots, not only to new ones. Thanks to Corfirean (#54).
+- Wildcard Hero bot files carry the GPL header. Thanks to shiro2448 (#48).
+
+### Dungeon Clear 2.8.1
+- Blackrock Depths, Lyceum: after a fight pulls the tank away, it returns to the brazier so the torch can be lit.
+- Stratholme: the Slaughterhouse event no longer ends early when Ramstein opens the gate; the group waits for the
+  portcullis during the Barthilas fight instead of stopping.
+- Shadowfang Keep: if the courtyard door closes behind the group while Rethilgore is still alive, it is opened again.
+- Bots that fall behind between pulls are brought back to the tank after 25 s instead of 60 s, so Heroic and Mythic runs
+  are about 10 minutes faster (bots only, never players).
+- New setting: `DungeonClear.StrandedRecoveryWaitSecs = 25` (capped by `DungeonClear.StrandedRecoveryNoProgressSecs`).
+
+### Launcher 0.3.48
+- On a new install, the navigation maps can be downloaded instead of generated.
+
+### Known limits
+- Dungeon Clear: Blackfathom Deeps (two bosses) and the Scarlet Cathedral (Whitemane does not resurrect Mograine) can
+  still get stuck. Heroic and Mythic mostly depend on bot gear.
+- Dungeon Clear: a Heroic or Mythic clear still running at the daily instance reset (04:00 server time) gets stuck. Type
+  `.dc off`, then start a new clear.
+- If bots stay behind during a clear, the Regroup button teleports them back.
+
 ## v2.8 — A smoother server with many bots, Dungeon Clear, realm cards (October 2026)
 
 ### Highlights
@@ -193,7 +257,7 @@ Many of these fixes come from the raid and dungeon reports of ladiabale and Yeh:
 - **Area spells no longer pull the next pack** (`AiPlayerbot.CoaAoeNoIdlePull`, on by default): in a dungeon or a
   raid, a bot no longer casts an area spell that would also hit a creature not yet fighting (a tank's Thunder Clap
   pulled the Ring of Law spectators in Blackrock Depths).
-- Ragefire Chasm, Taragaman (Heroic/Mythic): the bots hide behind the earth pillar before Massive Fire Nova, the tank
+- Razorfen Kraul, Taragaman (Heroic/Mythic): the bots hide behind the earth pillar before Massive Fire Nova, the tank
   once the cast starts.
 - Scarlet Monastery, Arcanist Doan: the bots run out of Detonation (36 yd) as soon as the Arcane Bubble is up.
 - Random bots join a random dungeon only within 5 levels of the real players waiting for it.
@@ -699,7 +763,7 @@ the `worldserver.conf` it builds at each start, and the full repack ships 60. Do
   being hit
 - **#6704** KoX Defiance, and every shield spec: no more two-handed weapons
 - **#6505 / #6493** Tank: leads the group only while the player moves on, and stays put when the player stops (no
-  more back and forth in Ragefire Chasm)
+  more back and forth in Razorfen Kraul)
 - **#6802** A bot standing still indoors (an inn) gets off its mount
 
 ## v1.9 — PvP (7 October 2026) — release main-20261007-ba8ce643
@@ -957,7 +1021,7 @@ becomes the default only when it wins overall and in each group of bots. Gain = 
 - A bot tank no longer taunts what another tank holds; only the group's main tank takes a target back
 - Healers no longer recast a heal over time already on the target (922 failed tries in 1,715 before), and no
   longer skip a tank without one
-- A bot that went through Ragefire Chasm or Shadowfang Keep no longer keeps that dungeon's strategy everywhere
+- A bot that went through Razorfen Kraul or Shadowfang Keep no longer keeps that dungeon's strategy everywhere
 - `co -rtsc` and `nc -tell target` work (strategy names fixed)
 - A bot looking at a scaled item no longer stops the server (Zyth45/mod-playerbots#16)
 
@@ -1125,7 +1189,7 @@ for their tips.
 - **No more bot stuck at a dungeon door**: the finder offers dungeons by the DBC level range, the entrance checks
   another one. Bots now skip dungeons their level cannot enter, and one sent there anyway leaves the group
   instead of being revived and sent back every 5 seconds (#5725, #5159, #4818)
-- **Ragefire Chasm and Shadowfang Keep strategies** (from HatredPsycho's fork)
+- **Razorfen Kraul and Shadowfang Keep strategies** (from HatredPsycho's fork)
 
 ### Dungeons and raids
 - **Bots follow you into your raid, not into an old one**: a random bot that had killed a Molten Core boss

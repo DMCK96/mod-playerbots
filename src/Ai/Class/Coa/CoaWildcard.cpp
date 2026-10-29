@@ -1,3 +1,9 @@
+/*
+ * This file is part of the mod-playerbots module for AzerothCore. See AUTHORS file for Copyright
+ * information; released under GNU GPL v2 license, redistribute/modify under version 2 of the License,
+ * or (at your option) any later version.
+ */
+
 #include "CoaWildcard.h"
 
 #include "AscensionCoATalentState.h"
@@ -841,7 +847,7 @@ bool RedraftWildcardBot(Player* bot, bool reequip)
     ResetWildcardBuild(bot);
     DraftWildcardBuild(bot);
     // Its gear was picked for the stats of its old path.
-    if (reequip && GetWildcardPrimaryStats(bot) != stats)
+    if (reequip && GetWildcardPrimaryStats(bot) != stats && PlayerbotFactory::MayGearItself(bot))
         PlayerbotFactory(bot, bot->GetLevel()).InitEquipment(true);
     if (PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot))
         botAI->ResetStrategies();

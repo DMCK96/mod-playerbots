@@ -15,6 +15,8 @@
 #include "Cell.h"
 #include "CellImpl.h"
 #include "ChannelMgr.h"
+#include "CharacterCache.h"
+#include "CoaBotRacePolicy.h"
 #include "DBCStores.h"
 #include "DBCStructure.h"
 #include "DatabaseEnv.h"
@@ -808,6 +810,10 @@ uint32 RandomPlayerbotMgr::AddRandomBots()
 
         for (auto const& charInfo : allCharacters)
         {
+            if (!IsCoaBotRaceAllowed(charInfo.rRace, sPlayerbotAIConfig.customRacesForBots,
+                                    sPlayerbotAIConfig.excludedBotRaces))
+                continue;
+
             if (IsAlliance(charInfo.rRace))
                 allianceChars.push_back(charInfo);
 
@@ -1794,6 +1800,18 @@ bool RandomPlayerbotMgr::ProcessBot(uint32 bot)
     Player* player = GetPlayerBot(botGUID);
     PlayerbotAI* botAI = player ? GET_PLAYERBOT_AI(player) : nullptr;
 
+    CharacterCacheEntry const* character = sCharacterCache->GetCharacterCacheByGuid(botGUID);
+    uint32 const race = player ? player->getRace() : character ? character->Race : 0;
+    if (!race || !IsCoaBotRaceAllowed(race, sPlayerbotAIConfig.customRacesForBots,
+                                    sPlayerbotAIConfig.excludedBotRaces))
+    {
+        SetEventValue(bot, "add", 0, 0);
+        currentBots.erase(bot);
+        if (player)
+            LogoutPlayerBot(botGUID);
+        return false;
+    }
+
     uint32 isValid = GetEventValue(bot, "add");
     if (!isValid)
     {
@@ -2572,6 +2590,10 @@ void RandomPlayerbotMgr::RandomizeFirst(Player* bot)
                                                                  sWorld->getIntConfig(CONFIG_START_HEROIC_PLAYER_LEVEL))
                                                       : sPlayerbotAIConfig.randombotStartingLevel;
     }
+
+    // Self-found: a new bot stays at the level it was made at, an older one at the level it earned.
+    if (PlayerbotFactory::SelfFoundAt(level))
+        level = bot->GetLevel();
 
     SetValue(bot, "level", level);
     PlayerbotFactory factory(bot, level);
@@ -3397,6 +3419,9 @@ void RandomPlayerbotMgr::CoaUpdateGear(Player* bot)
     if (!bot || !bot->IsInWorld() || !bot->IsAlive() || bot->IsInCombat() || bot->IsInFlight() || bot->GetLevel() < 10 ||
         !sPlayerbotAIConfig.IsInRandomAccountList(bot->GetSession()->GetAccountId()))
         return;
+    // Self-found: a bot keeps the gear it found, PvP or not.
+    if (PlayerbotFactory::SelfFoundAt(bot->GetLevel()))
+        return;
     PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
     if (!botAI)
         return;
@@ -3543,11 +3568,12 @@ void RandomPlayerbotMgr::OnBotLoginInternal(Player* const bot)
 
     // A bot made before MaxPlayerLevel or RandomBotMaxLevel was lowered kept its level, since Randomize only
     // rebuilds a bot at the level it has: bring it down to the cap, gear, talents and spells redone.
+    // Self-found: a bot keeps the level it earned, above the cap as well.
     if (IsRandomBot(bot) && !bot->InBattleground() && !bot->InArena() && GET_PLAYERBOT_AI(bot))
     {
         uint32 const levelCap = std::min<uint32>(sPlayerbotAIConfig.randomBotMaxLevel,
                                                  sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL));
-        if (levelCap && bot->GetLevel() > levelCap)
+        if (levelCap && bot->GetLevel() > levelCap && !PlayerbotFactory::SelfFoundAt(levelCap))
         {
             uint32 const oldLevel = bot->GetLevel();
             if (bot->IsMounted())
@@ -3597,7 +3623,7 @@ void RandomPlayerbotMgr::OnBotLoginInternal(Player* const bot)
         for (uint8 slot = EQUIPMENT_SLOT_START; slot < EQUIPMENT_SLOT_END && !overLevel; ++slot)
             if (Item* item = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
                 overLevel = item->GetTemplate()->RequiredLevel > bot->GetLevel();
-        if (overLevel)
+        if (overLevel && !PlayerbotFactory::SelfFoundAt(bot->GetLevel()))
         {
             PlayerbotFactory::DestroyEquippedGear(bot);
             PlayerbotFactory factory(bot, bot->GetLevel());
