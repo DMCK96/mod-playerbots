@@ -8,7 +8,7 @@
 #define PLAYERBOTS_NEWRPGINFO_H
 
 #include "Define.h"
-#include "HumanMovementRules.h"
+#include "HumanMovementTargets.h"
 #include "ObjectGuid.h"
 #include "ObjectMgr.h"
 #include "QuestDef.h"

@@ -16,6 +16,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "HumanMovementTargets.h"
+
 // Decisions behind ambient bot movement that need no game state: how attractive a target is, which one to pick,
 // which targets a bot saw last and when a long run is cut for a pause. Kept free of core headers so the unit
 // tests can pin them.
@@ -28,11 +30,7 @@ enum class TargetKind : uint8_t
     Place    // grind areas and quest objectives
 };
 
-using TargetKey = uint64_t;
-constexpr TargetKey NoTarget = 0;
-
 constexpr uint32_t ClaimTtlMs = 180000;
-constexpr size_t RecentSize = 4;
 constexpr float RecencyFactor = 0.05f;
 constexpr size_t MaxLiveScans = 8;
 
@@ -109,42 +107,6 @@ inline std::vector<size_t> TopIndices(std::vector<float> const& weights, size_t 
         order.resize(count);
     return order;
 }
-
-class RecentTargets
-{
-public:
-    void Push(TargetKey key)
-    {
-        if (key == NoTarget)
-            return;
-        auto const end = keys.begin() + used;
-        auto const found = std::find(keys.begin(), end, key);
-        if (found != end)
-        {
-            std::rotate(found, found + 1, end);
-            keys[used - 1] = key;
-            return;
-        }
-        if (used < RecentSize)
-        {
-            keys[used++] = key;
-            return;
-        }
-        std::rotate(keys.begin(), keys.begin() + 1, keys.end());
-        keys[RecentSize - 1] = key;
-    }
-
-    bool Contains(TargetKey key) const
-    {
-        return key != NoTarget && std::find(keys.begin(), keys.begin() + used, key) != keys.begin() + used;
-    }
-
-    void Clear() { used = 0; }
-
-private:
-    std::array<TargetKey, RecentSize> keys{};
-    size_t used{0};
-};
 
 // Which target each bot is heading to or standing at. A claim that is not refreshed for ClaimTtlMs no longer
 // counts, so bots that log out or teleport without releasing stop blocking their target.
