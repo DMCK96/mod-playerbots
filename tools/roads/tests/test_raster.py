@@ -24,10 +24,18 @@ class ClassifyTest(unittest.TestCase):
         cls = classify(empty(), dirt, trails=True)
         self.assertGreater((cls[300:310, 100:500] == 2).mean(), 0.9)
 
-    def test_trails_are_off_by_default(self):
+    def test_trails_can_be_left_out(self):
         dirt = empty()
         dirt[300:310, 100:500] = 1.0
-        self.assertEqual(int((classify(empty(), dirt) > 0).sum()), 0)
+        self.assertEqual(int((classify(empty(), dirt, trails=False) > 0).sum()), 0)
+
+    def test_trail_into_a_field_keeps_the_trail_only(self):
+        dirt = empty()
+        dirt[300:310, 100:500] = 1.0
+        dirt[200:400, 500:700] = 1.0
+        cls = classify(empty(), dirt, trails=True)
+        self.assertGreater((cls[300:310, 100:450] == 2).mean(), 0.9)
+        self.assertEqual(int((cls[220:380, 540:680] > 0).sum()), 0)
 
     def test_speckled_road_thins_to_one_centreline(self):
         rng = np.random.default_rng(7)

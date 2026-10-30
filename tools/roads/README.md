@@ -38,8 +38,10 @@ Restart the worldserver after rebuilding; graphs are cached per map once loaded.
 
 1. **Layers:** each terrain tile's texture layers are blended. Textures named like roads (road, path, cobble,
    brick, stone...) above half weight are road.
-2. **Dirt:** dirt blobs at most 9 yd wide are trails when they are at least 60 yd long, and road shoulders when
-   they touch a road. Wider dirt (fields, bare ground) is ignored.
+2. **Dirt:** dirt blobs at most 9 yd wide that touch a road are road shoulders. Elsewhere the dirt is thinned to
+   a skeleton and the stretches where its width (a 15-pixel running median) stays at 8 yd or less are kept; kept
+   stretches that chain into a line at least 40 yd long and not a mesh are trails. Fields, river beds and rocky
+   patches are wide or tangled and are ignored; a trail that runs into one is kept. `--no-trails` turns trails off.
 3. **Centrelines:** the mask is thinned to one-pixel centrelines (about half a yard per pixel), traced into
    polylines and joined across tile borders.
 4. **Clean-up:**

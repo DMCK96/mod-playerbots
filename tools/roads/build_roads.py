@@ -1,6 +1,6 @@
 """Build bot road graphs from a WoW 3.3.5a client's terrain textures.
 
-Usage: python -I build_roads.py <client dir> <out dir> [--maps 0,1,530] [--jobs 4] [--trails]
+Usage: python -I build_roads.py <client dir> <out dir> [--maps 0,1,530] [--jobs 4] [--no-trails]
                                 [--preview DIR --tiles 0_32_48,1_36_32]
 Writes <out dir>/<mapId:03d>.roads for every map with ADT tiles and at least one road edge. See README.md.
 """
@@ -143,8 +143,8 @@ def main(argv=None):
     parser.add_argument('--jobs', type=int, default=4, help='worker processes (default 4)')
     parser.add_argument('--preview', help='folder for preview PNGs of the tiles named by --tiles')
     parser.add_argument('--tiles', help='comma list of map_x_y tiles to preview')
-    parser.add_argument('--trails', action='store_true',
-                        help='also add narrow dirt trails (experimental: often picks up fields and rocky ground)')
+    parser.add_argument('--no-trails', dest='trails', action='store_false',
+                        help='leave out narrow dirt trails and keep only painted roads')
     args = parser.parse_args(argv)
     if args.tiles and not args.preview:
         parser.error('--tiles needs --preview')
