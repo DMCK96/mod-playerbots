@@ -251,6 +251,37 @@ TEST(RoadRules, AdvanceWhenCloseOrPastTheWaypoint)
     EXPECT_TRUE(ShouldAdvance({-10, 3, 0}, current, nullptr));
 }
 
+TEST(RoadRules, SharpBendIsTakenAtTheNode)
+{
+    Point const current{0, 0, 0};
+    Point const turnLeft{0, 40, 0};
+    EXPECT_FALSE(ShouldAdvance({-10, 0, 0}, current, &turnLeft));
+    EXPECT_FALSE(ShouldAdvance({-8, 0, 0}, current, &turnLeft));
+    EXPECT_TRUE(ShouldAdvance({-3, 0, 0}, current, &turnLeft));
+}
+
+TEST(RoadRules, GentleBendIsCutShort)
+{
+    Point const current{0, 0, 0};
+    Point const slightTurn{40, 6, 0};
+    EXPECT_TRUE(ShouldAdvance({-10, 0, 0}, current, &slightTurn));
+    EXPECT_FALSE(ShouldAdvance({-20, 0, 0}, current, &slightTurn));
+}
+
+TEST(RoadRules, LateralOffsetStaysNearTheMiddleOfTheRoad)
+{
+    for (uint32_t counter = 0; counter < 12; ++counter)
+    {
+        EXPECT_GE(LateralYards(counter), 0.5f);
+        EXPECT_LE(LateralYards(counter), 1.5f);
+    }
+}
+
+TEST(RoadRules, LegsStayShortEnoughToHugTheRoad)
+{
+    EXPECT_LE(LegYards, 25.0f);
+}
+
 TEST(RoadRules, EligibilityNeedsLengthAndRoll)
 {
     EXPECT_TRUE(RoadTripEligible(200.0f, 150.0f, 75, 0.74f));

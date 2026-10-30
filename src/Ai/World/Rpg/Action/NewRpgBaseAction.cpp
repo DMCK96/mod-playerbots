@@ -357,11 +357,11 @@ WorldPosition NewRpgBaseAction::RoadLegTarget(WorldPosition const& dest)
         z = onMesh.z;
     }
 
-    // Each bot keeps to its own side of the road, 1-3 yards off the centreline.
+    // Each bot keeps to its own side of the road, 0.5-1.5 yards off the centreline.
     uint32 const counter = bot->GetGUID().GetCounter();
     RoadRules::Point const previous = leg ? point(road.points[leg - 1]) : here;
     RoadRules::Point const shifted =
-        RoadRules::OffsetWaypoint(previous, {x, y, z}, counter % 2 ? 1 : -1, float(1 + counter % 3));
+        RoadRules::OffsetWaypoint(previous, {x, y, z}, counter % 2 ? 1 : -1, RoadRules::LateralYards(counter));
     float sx = shifted.x;
     float sy = shifted.y;
     float sz = shifted.z;

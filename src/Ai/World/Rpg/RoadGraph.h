@@ -46,8 +46,11 @@ constexpr uint32_t NoEdge = UINT32_MAX;
 constexpr uint32_t BlockMs = 1800000;
 constexpr float MaxCoordinate = 100000.0f;
 constexpr float AdvanceYards = 16.0f;  // past the 10 yd at which MoveFarTo starts the next leg, plus the offset
+constexpr float CornerYards = 4.0f;    // a sharp bend is only taken once the bot is this close to its node
+constexpr float GentleBend = 0.9f;     // cosine of the turn up to which a node is cut short (about 25 degrees)
+constexpr float PassedBend = -0.2f;    // cosine below which the bot is already past the node
 constexpr float EntryBackslide = 0.25f;  // a road node may be this share of its distance farther from the goal
-constexpr float LegYards = 60.0f;      // road walked per leg before asking the navmesh again
+constexpr float LegYards = 24.0f;      // road walked per leg before asking the navmesh again
 
 struct PlanParams
 {
@@ -317,12 +320,31 @@ inline Point OffsetWaypoint(Point previous, Point node, int side, float yards)
     return {node.x - dy * scale, node.y + dx * scale, node.z};
 }
 
+inline float LateralYards(uint32_t counter)
+{
+    return 0.5f + 0.5f * float(counter % 3);
+}
+
 inline bool ShouldAdvance(Point bot, Point current, Point const* next)
 {
     float const toCurrent = Distance2d(bot.x, bot.y, current.x, current.y);
-    if (toCurrent <= AdvanceYards)
+    if (toCurrent <= CornerYards)
         return true;
-    return next && Distance2d(bot.x, bot.y, next->x, next->y) < toCurrent;
+    if (next && Distance2d(bot.x, bot.y, next->x, next->y) < toCurrent)
+        return true;
+    if (toCurrent > AdvanceYards)
+        return false;
+    if (!next)
+        return true;
+    float const ax = current.x - bot.x;
+    float const ay = current.y - bot.y;
+    float const bx = next->x - current.x;
+    float const by = next->y - current.y;
+    float const lengths = std::hypot(ax, ay) * std::hypot(bx, by);
+    if (lengths <= 0.0f)
+        return true;
+    float const turn = (ax * bx + ay * by) / lengths;
+    return turn >= GentleBend || turn < PassedBend;
 }
 
 inline bool RoadTripEligible(float tripYards, float minTripYards, uint32_t sharePercent, float roll)
