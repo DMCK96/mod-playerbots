@@ -796,6 +796,44 @@ void NotePause()
     counters.pauses.fetch_add(1, std::memory_order_relaxed);
 }
 
+namespace
+{
+struct Walk
+{
+    uint32 mapId{0};
+    float x{0.0f};
+    float y{0.0f};
+    float accrued{0.0f};
+    bool seen{false};
+};
+
+std::mutex walksLock;
+std::unordered_map<ObjectGuid::LowType, Walk> walks;
+}  // namespace
+
+float AccruePauseYards(Player const* bot)
+{
+    std::lock_guard<std::mutex> guard(walksLock);
+    Walk& walk = walks[bot->GetGUID().GetCounter()];
+    float const x = bot->GetPositionX();
+    float const y = bot->GetPositionY();
+    if (walk.seen && walk.mapId == bot->GetMapId())
+        walk.accrued = HumanMovementRules::AccrueWalked(walk.accrued, std::hypot(x - walk.x, y - walk.y));
+    else
+        walk.accrued = 0.0f;
+    walk.seen = true;
+    walk.mapId = bot->GetMapId();
+    walk.x = x;
+    walk.y = y;
+    return walk.accrued;
+}
+
+void SpendPauseYards(Player const* bot)
+{
+    std::lock_guard<std::mutex> guard(walksLock);
+    walks[bot->GetGUID().GetCounter()].accrued = 0.0f;
+}
+
 std::shared_ptr<RoadRules::RoadGraph const> RoadGraphFor(uint32 mapId)
 {
     static std::mutex lock;

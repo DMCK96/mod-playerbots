@@ -113,6 +113,9 @@ void NoteHop();
 void NoteEmote();
 void NoteSmoothLaunch(bool smooth);
 void NotePause();
+// Yards the bot has walked since its last pause roll, counted between successive calls.
+float AccruePauseYards(Player const* bot);
+void SpendPauseYards(Player const* bot);
 
 // Road graph of a map from DataDir/roads/<map>.roads, loaded on first use; null when the map has none.
 std::shared_ptr<RoadRules::RoadGraph const> RoadGraphFor(uint32 mapId);

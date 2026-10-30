@@ -163,7 +163,7 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
         }
         return MoveHumanTo(target.GetMapId(), target.GetPositionX(), target.GetPositionY(), target.GetPositionZ(),
                            MovementPriority::MOVEMENT_NORMAL,
-                           RoutePauseChance(dest, target.GetPositionX(), target.GetPositionY()));
+                           RoutePauseChance(dest));
     }
 
     const uint32 typeOk = PATHFIND_NORMAL | PATHFIND_INCOMPLETE | PATHFIND_FARFROMPOLY;
@@ -200,7 +200,7 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
             if (endDistToDest + 5.0f < disToDest)
             {
                 return MoveHumanTo(bot->GetMapId(), endPos.x, endPos.y, endPos.z, MovementPriority::MOVEMENT_NORMAL,
-                                   RoutePauseChance(dest, endPos.x, endPos.y));
+                                   RoutePauseChance(dest));
             }
         }
     }
@@ -243,7 +243,7 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
     if (found)
     {
         return MoveHumanTo(bot->GetMapId(), rx, ry, rz, MovementPriority::MOVEMENT_NORMAL,
-                           RoutePauseChance(dest, rx, ry));
+                           RoutePauseChance(dest));
     }
     return false;
 }
@@ -678,13 +678,16 @@ HumanMovement::Straight NewRpgBaseAction::StraightReason(G3D::Vector3 const& des
     return HumanMovement::Straight::NoRoute;
 }
 
-float NewRpgBaseAction::RoutePauseChance(WorldPosition const& dest, float legX, float legY)
+float NewRpgBaseAction::RoutePauseChance(WorldPosition const& dest)
 {
     uint32 const yards = sPlayerbotAIConfig.coaRoutePauseYards;
     if (!sPlayerbotAIConfig.coaDwell || !yards)
         return 0.0f;
-    float const chance = HumanMovementRules::PauseChance(bot->GetExactDist(dest), bot->GetExactDist2d(legX, legY),
-                                                         yards);
+    float const walked = HumanMovement::AccruePauseYards(bot);
+    if (walked < HumanMovementRules::MinPauseWalkYards)
+        return 0.0f;
+    HumanMovement::SpendPauseYards(bot);
+    float const chance = HumanMovementRules::PauseChance(bot->GetExactDist(dest), walked, yards);
     if (chance <= 0.0f || bot->IsInCombat() || bot->IsMounted() || bot->IsFlying() || bot->isSwimming() ||
         bot->GetVehicle() || bot->GetHealthPct() < 50.0f)
         return 0.0f;

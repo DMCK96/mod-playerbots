@@ -197,12 +197,23 @@ private:
     std::unordered_map<TargetKey, std::vector<uint32_t>> byTarget;
 };
 
-// Chance that a path leg is cut short for a pause, given the trip still ahead and the leg about to start.
+constexpr float MinPauseWalkYards = 30.0f;
+
+// Chance that the path ahead is cut short for a pause, given the trip still ahead and the yards walked since the
+// last roll.
 inline float PauseChance(float remainingYards, float legYards, uint32_t routePauseYards)
 {
-    if (!routePauseYards || remainingYards <= 80.0f || legYards < 30.0f)
+    if (!routePauseYards || remainingYards <= 80.0f || legYards < MinPauseWalkYards)
         return 0.0f;
     return std::min(legYards / float(routePauseYards), 0.5f);
+}
+
+constexpr float MaxWalkStepYards = 100.0f;
+
+// Yards walked toward the next pause roll. A step longer than any leg is a teleport and adds nothing.
+inline float AccrueWalked(float accrued, float stepYards)
+{
+    return stepYards > 0.0f && stepYards <= MaxWalkStepYards ? accrued + stepYards : accrued;
 }
 
 // Last path index kept when a leg of `pointCount` points is cut for a pause; 0 = the leg is too short to cut.

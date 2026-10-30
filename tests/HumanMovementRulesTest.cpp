@@ -123,6 +123,36 @@ TEST(HumanMovementRules, RecentTargetsKeepsTheLastFourDistinct)
     EXPECT_FALSE(recent.Contains(6));
 }
 
+TEST(HumanMovementRules, ShortLegsPauseAsOftenPerYardAsLongOnes)
+{
+    constexpr float tripYards = 1200.0f;
+    constexpr uint32_t routePauseYards = 400;
+    auto const rolls = [&](float legYards)
+    {
+        float accrued = 0.0f;
+        float expected = 0.0f;
+        for (float walked = 0.0f; walked < tripYards; walked += legYards)
+        {
+            accrued = AccrueWalked(accrued, legYards);
+            if (accrued < MinPauseWalkYards)
+                continue;
+            expected += PauseChance(tripYards, accrued, routePauseYards);
+            accrued = 0.0f;
+        }
+        return expected;
+    };
+    EXPECT_NEAR(rolls(20.0f), rolls(60.0f), 0.35f);
+    EXPECT_NEAR(rolls(20.0f), tripYards / routePauseYards, 0.35f);
+}
+
+TEST(HumanMovementRules, TeleportsAndBackwardStepsAddNoWalkedYards)
+{
+    EXPECT_FLOAT_EQ(AccrueWalked(10.0f, 25.0f), 35.0f);
+    EXPECT_FLOAT_EQ(AccrueWalked(10.0f, 500.0f), 10.0f);
+    EXPECT_FLOAT_EQ(AccrueWalked(10.0f, -3.0f), 10.0f);
+    EXPECT_FLOAT_EQ(AccrueWalked(10.0f, MaxWalkStepYards), 10.0f + MaxWalkStepYards);
+}
+
 TEST(HumanMovementRules, PauseChanceNeedsALongTripAndALongLeg)
 {
     EXPECT_FLOAT_EQ(PauseChance(200.0f, 100.0f, 400), 0.25f);

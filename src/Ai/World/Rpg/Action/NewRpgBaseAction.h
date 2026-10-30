@@ -46,7 +46,7 @@ protected:
     HumanMovement::Straight StraightReason(G3D::Vector3 const& dest);
     bool LingerNear(float moveStep);
     bool WanderBetweenPlaces();
-    float RoutePauseChance(WorldPosition const& dest, float legX, float legY);
+    float RoutePauseChance(WorldPosition const& dest);
     bool TakeRoutePause();
     void PlanRoadRoute(WorldPosition const& dest);
     WorldPosition RoadLegTarget(WorldPosition const& dest);
