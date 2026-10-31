@@ -8,6 +8,7 @@
 #define PLAYERBOTS_NAVTELEMETRYRULES_H
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <cstdio>
 #include <string>
@@ -27,16 +28,22 @@ struct BuildInfo
 
 constexpr std::size_t MaxSubjectBytes = 120;
 
-// FNV-1a 64 over the sorted "key=value\n" lines. Options whose key contains "Metrics" or "BuildInfo" only change
-// how often the server logs or where it finds this identity, not how bots behave, so they are left out.
+// Options that only change what the server logs, where it finds this identity or how bots are named and announced:
+// editing them is not a new behaviour, so a key containing one of these words stays out of the fingerprint.
+constexpr std::array<char const*, 8> NonBehaviourWords = {"Metrics",      "BuildInfo", "Telemetry", "LogTargets",
+                                                          "StatusFile",   "StatusInterval", "Surname", "Announce"};
+
+inline bool ChangesBehaviour(std::string const& key)
+{
+    return std::none_of(NonBehaviourWords.begin(), NonBehaviourWords.end(),
+                        [&key](char const* word) { return key.find(word) != std::string::npos; });
+}
+
+// FNV-1a 64 over the sorted "key=value\n" lines of the options that change behaviour.
 inline std::string Fingerprint(std::vector<std::pair<std::string, std::string>> options)
 {
     options.erase(std::remove_if(options.begin(), options.end(),
-                                 [](auto const& option)
-                                 {
-                                     return option.first.find("Metrics") != std::string::npos ||
-                                            option.first.find("BuildInfo") != std::string::npos;
-                                 }),
+                                 [](auto const& option) { return !ChangesBehaviour(option.first); }),
                   options.end());
     std::sort(options.begin(), options.end(), [](auto const& a, auto const& b) { return a.first < b.first; });
 
@@ -66,7 +73,8 @@ inline bool IsGitSha(std::string const& text)
 {
     if (text.size() < 7 || text.size() > 40)
         return false;
-    return std::all_of(text.begin(), text.end(), [](char c) { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'); });
+    return std::all_of(text.begin(), text.end(),
+                       [](char c) { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'); });
 }
 
 inline std::string Trim(std::string text)

@@ -37,6 +37,22 @@ TEST(NavTelemetryRules, FingerprintSkipsTheBuildInfoOption)
               Fingerprint({{"AiPlayerbot.CoaX", "1"}}));
 }
 
+TEST(NavTelemetryRules, FingerprintSkipsLoggingAndCosmeticOptions)
+{
+    std::string const base = Fingerprint({{"AiPlayerbot.CoaSmoothPaths", "1"}});
+    for (char const* key : {"AiPlayerbot.CoaGroupTelemetry", "AiPlayerbot.CoaGroupTelemetryRaids",
+                            "AiPlayerbot.CoaLogTargets", "AiPlayerbot.CoaStatusFile",
+                            "AiPlayerbot.CoaStatusIntervalSeconds", "AiPlayerbot.CoaBotSurname",
+                            "AiPlayerbot.CoaLfgAnnounceText", "AiPlayerbot.CoaLfgAnnounceMinutes"})
+        EXPECT_EQ(Fingerprint({{"AiPlayerbot.CoaSmoothPaths", "1"}, {key, "7"}}), base) << key;
+}
+
+TEST(NavTelemetryRules, FingerprintStillCountsMovementOptions)
+{
+    EXPECT_NE(Fingerprint({{"AiPlayerbot.CoaSmoothPaths", "1"}}), Fingerprint({{"AiPlayerbot.CoaSmoothPaths", "0"}}));
+    EXPECT_NE(Fingerprint({{"AiPlayerbot.CoaRoadShare", "100"}}), Fingerprint({{"AiPlayerbot.CoaRoadShare", "50"}}));
+}
+
 TEST(NavTelemetryRules, FingerprintOfNothingIsTheFnvOffset)
 {
     EXPECT_EQ(Fingerprint({}), "cbf29ce484222325");
@@ -44,7 +60,8 @@ TEST(NavTelemetryRules, FingerprintOfNothingIsTheFnvOffset)
 
 TEST(NavTelemetryRules, ParseBuildInfoReadsShaAndSubject)
 {
-    BuildInfo const info = ParseBuildInfo("sha=712dd474fcf1b6d2f63f10bb9990dc1127d86bce\nsubject=CoA movement: pauses\n");
+    BuildInfo const info =
+        ParseBuildInfo("sha=712dd474fcf1b6d2f63f10bb9990dc1127d86bce\nsubject=CoA movement: pauses\n");
     EXPECT_EQ(info.sha, "712dd474fcf1b6d2f63f10bb9990dc1127d86bce");
     EXPECT_EQ(info.subject, "CoA movement: pauses");
 }
