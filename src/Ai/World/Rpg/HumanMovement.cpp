@@ -249,6 +249,7 @@ struct Counters
     std::atomic<uint64> approaches{0};
     std::atomic<uint64> teleports{0};
     std::atomic<uint32> nextLog{0};
+    std::atomic<uint32> onlineBots{0};
 };
 
 Counters counters;
@@ -355,12 +356,12 @@ void MaybeLog()
     uint64 const roadMicros = counters.roadMicros.exchange(0);
     uint64 const roadSearches = roadPlans - std::min(roadPlans, roadNoGraph);
     LOG_INFO("playerbots",
-             "coa movement (last {}s): spots {} (overlap {} = {:.1f}%, retries {}, fallbacks {}), lanes {} plain {}, "
+             "coa movement (last {}s): bots {}, spots {} (overlap {} = {:.1f}%, retries {}, fallbacks {}), lanes {} plain {}, "
              "dwells {} (avg {:.1f}s), hops {}, emotes {}, cost: pick {:.1f}us avg, launch {:.1f}us avg, "
              "targets {} (repeat {:.1f}%, live scans {}, occupancy hub {:.1f} spread {:.1f} place {:.1f}, "
              "choose {:.1f}us avg), pauses {}, road plans {} (used {}, no graph {}, no road {}, too long {}), "
              "waypoints {}, abandoned {}, plan {:.1f}us avg",
-             interval, picks, overlaps, picks ? 100.0 * double(overlaps) / double(picks) : 0.0,
+             interval, counters.onlineBots.load(std::memory_order_relaxed), picks, overlaps, picks ? 100.0 * double(overlaps) / double(picks) : 0.0,
              counters.retries.exchange(0), counters.fallbacks.exchange(0), smooth, plain, dwells,
              dwells ? double(dwellMs) / double(dwells) / 1000.0 : 0.0, counters.hops.exchange(0),
              counters.emotes.exchange(0), picks ? double(pickMicros) / double(picks) : 0.0,
@@ -917,5 +918,9 @@ void NoteRoadWaypoint()
 void NoteRoadAbandon()
 {
     counters.roadAbandons.fetch_add(1, std::memory_order_relaxed);
+}
+void SetOnlineBots(uint32 count)
+{
+    counters.onlineBots.store(count, std::memory_order_relaxed);
 }
 }  // namespace HumanMovement

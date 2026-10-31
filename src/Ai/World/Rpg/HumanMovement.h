@@ -113,6 +113,7 @@ void NoteHop();
 void NoteEmote();
 void NoteSmoothLaunch(bool smooth);
 void NotePause();
+void SetOnlineBots(uint32 count);
 // Yards the bot has walked since its last pause roll, counted between successive calls.
 float AccruePauseYards(Player const* bot);
 void SpendPauseYards(Player const* bot);

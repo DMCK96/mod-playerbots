@@ -1752,6 +1752,13 @@ AiPlayerbot.CoaRoadMinTrip = 25
 # Default: 60
 AiPlayerbot.CoaMovementMetricsSeconds = 60
 
+# File that tells the worldserver which build it is: "sha=<git sha>" and "subject=<one line>" on separate lines.
+# Its contents are logged once at start as a "coa build" line next to a hash of the AiPlayerbot.Coa* settings,
+# so the navigation history can tell deploys apart. Empty = the line says sha=unknown. The Docker deployment sets
+# it with the environment variable AC_AI_PLAYERBOT_COA_BUILD_INFO_FILE.
+# Default: (empty)
+AiPlayerbot.CoaBuildInfoFile = ""
+
 # In a party of five, ranged damage dealers and healers stand behind the living tank (next to
 # the healer when it is already back there), step back when they end up on the mob's side,
 # and melee close on the tank's side of the mob. Follow between pulls uses the same spot. Works

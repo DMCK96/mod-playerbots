@@ -13,6 +13,8 @@
 #include "Config.h"
 #include "DatabaseEnv.h"
 #include "DatabaseLoader.h"
+#include "HumanMovement.h"
+#include "NavTelemetryRules.h"
 #include "GuildTaskMgr.h"
 #include "PlayerScript.h"
 #include "PlayerbotAIConfig.h"
@@ -26,6 +28,8 @@
 #include "ScriptMgr.h"
 #include "cmath"
 #include <algorithm>
+#include <fstream>
+#include <sstream>
 
 // Shown to players at login: bump it with every CoA Bots release.
 static constexpr char const* COA_BOTS_VERSION = "2.8.1";
@@ -401,6 +405,32 @@ public:
     }
 };
 
+// One line at start so the navigation collector can tell which build and which behaviour settings a run used.
+static void LogBuildIdentity()
+{
+    NavTelemetryRules::BuildInfo info{"unknown", ""};
+    std::string const infoFile = sConfigMgr->GetOption<std::string>("AiPlayerbot.CoaBuildInfoFile", "", false);
+    if (!infoFile.empty())
+    {
+        std::ifstream file(infoFile);
+        if (file)
+        {
+            std::stringstream text;
+            text << file.rdbuf();
+            info = NavTelemetryRules::ParseBuildInfo(text.str());
+        }
+        else
+            LOG_WARN("playerbots", "coa build: cannot read {}", infoFile);
+    }
+
+    std::vector<std::pair<std::string, std::string>> options;
+    for (std::string const& key : sConfigMgr->GetKeysByString("AiPlayerbot.Coa"))
+        options.emplace_back(key, sConfigMgr->GetOption<std::string>(key, ""));
+
+    LOG_INFO("playerbots", "{}",
+             NavTelemetryRules::FormatBuildLine(info, NavTelemetryRules::Fingerprint(std::move(options))));
+}
+
 class PlayerbotsWorldScript : public WorldScript
 {
 public:
@@ -433,6 +463,7 @@ public:
         LOG_INFO("server.loading", "Load Playerbots Config...");
 
         sPlayerbotAIConfig.Initialize();
+        LogBuildIdentity();
 
         LOG_INFO("server.loading", ">> Loaded playerbots config in {} ms", GetMSTimeDiffToNow(oldMSTime));
         LOG_INFO("server.loading", " ");
@@ -450,8 +481,20 @@ public:
         PlayerbotWorldThreadProcessor::instance().Update(diff);
         sRandomPlayerbotMgr.UpdateAI(diff);  // World thread only
         sRandomPlayerbotMgr.CoaReleaseOrphanGroups();
+
+        botCountTimer += diff;
+        if (botCountTimer >= BotCountRefreshMs)
+        {
+            botCountTimer = 0;
+            HumanMovement::SetOnlineBots(sRandomPlayerbotMgr.GetPlayerbotsCount());
+        }
     }
 
+private:
+    static constexpr uint32 BotCountRefreshMs = 10000;
+    uint32 botCountTimer = BotCountRefreshMs;
+
+public:
     void OnShutdown() override
     {
         // Command server sessions run on detached threads that would otherwise outlive the world thread processor.

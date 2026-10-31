@@ -3,5 +3,6 @@ if(NOT MODULE_MOD-PLAYERBOTS STREQUAL "disabled")
         "${CMAKE_SOURCE_DIR}/modules/mod-playerbots/src/Ai/World/Rpg")
     set_property(GLOBAL APPEND PROPERTY ACORE_MODULE_TEST_SOURCES
         "${CMAKE_SOURCE_DIR}/modules/mod-playerbots/tests/HumanMovementRulesTest.cpp"
+        "${CMAKE_SOURCE_DIR}/modules/mod-playerbots/tests/NavTelemetryRulesTest.cpp"
         "${CMAKE_SOURCE_DIR}/modules/mod-playerbots/tests/RoadGraphTest.cpp")
 endif()
