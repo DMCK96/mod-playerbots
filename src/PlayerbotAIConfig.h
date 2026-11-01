@@ -98,6 +98,7 @@ public:
 
     bool Initialize();
     void LoadRandomBotLevelConfig();
+    void LoadActivityConfig();
     bool IsInRandomAccountList(uint32 id);
     bool IsInRandomQuestItemList(uint32 id);
     bool IsPvpProhibited(uint32 zoneId, uint32 areaId);

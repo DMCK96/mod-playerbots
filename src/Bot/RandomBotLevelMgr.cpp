@@ -1229,6 +1229,7 @@ public:
             return;
 
         sPlayerbotAIConfig.LoadRandomBotLevelConfig();
+        sPlayerbotAIConfig.LoadActivityConfig();
         RandomBotLevelMgr::instance().LoadConfig();
         LOG_INFO("playerbots", "[RandomBotLevelMgr] Level management config reloaded.");
     }

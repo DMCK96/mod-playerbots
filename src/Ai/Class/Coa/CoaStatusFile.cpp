@@ -8,6 +8,9 @@
  * SquidBots dashboard (its map and bot cards): where each bot is, its health and power, what it is
  * doing, its group and its quests. Off unless AiPlayerbot.CoaStatusFile names a file.
  *
+ * "idle" is present when the activity throttle (AiPlayerbot.BotActiveAlone) has put the bot to sleep: its AI is not
+ * running, so its task is the last one it chose.
+ *
  * "k" is the number of creatures the bot (or its pet or totem) has landed the killing blow on since the
  * server started. The core keeps no achievement progress for bots, so the dashboard's "Mobs killed"
  * reads this count and keeps its own running total across restarts.
@@ -348,6 +351,8 @@ void AppendBot(std::string& out, Player* bot, PlayerbotAI* botAI, JsonNames& nam
     out += bot->IsAlive() ? ",\"dead\":false" : ",\"dead\":true";
     if (bot->IsMounted())
         out += ",\"mnt\":true";
+    if (!botAI->IsActivityAllowedCached())
+        out += ",\"idle\":true";
 
     Group* group = bot->GetGroup();
     out += ",\"grp\":";
