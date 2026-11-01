@@ -126,6 +126,8 @@ std::unordered_set<uint32_t> BlockedRoadEdges(uint32 mapId);
 void NoteRoadPlan(RoadRules::PlanResult result, bool hadGraph, uint32 micros);
 void NoteRoadWaypoint();
 void NoteRoadAbandon();
+// True while fewer than `perMinute` navigation events were logged this minute (0 = none).
+bool TakeNavEventSlot(uint32 perMinute);
 
 class CostTimer
 {

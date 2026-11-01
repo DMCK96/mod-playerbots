@@ -1738,6 +1738,12 @@ AiPlayerbot.CoaTargetSpread = 1
 # Default: 400
 AiPlayerbot.CoaRoutePauseYards = 400
 
+# One "coa navevent" line in Playerbots.log per navigation failure (stuck teleport, floor miss, straight-line
+# fallback, abandoned road leg) with the bot, zone, positions, RPG status and trip length, at most this many per
+# minute. Read on every event, so ".reload config" changes it. 0 = no lines.
+# Default: 0
+AiPlayerbot.CoaNavEventsPerMinute = 0
+
 # Percent of trips (of at least AiPlayerbot.CoaRoadMinTrip yards, on foot or mounted) on which a bot
 # follows roads: it joins one that leads toward the goal (within
 # a quarter of the trip (80 to 250 yards) of its start), rides it as far as it helps, then walks off-road. Needs road graphs in DataDir/roads/, built from the client with

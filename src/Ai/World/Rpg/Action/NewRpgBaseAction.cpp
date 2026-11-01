@@ -8,6 +8,7 @@
 #include "NewRpgBaseAction.h"
 #include "BroadcastHelper.h"
 #include "ChatHelper.h"
+#include "Config.h"
 #include "Creature.h"
 #include "GameObject.h"
 #include "GossipDef.h"
@@ -142,9 +143,10 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
             bot->GetName(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(), bot->GetMapId(),
             dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ(), dest.GetMapId(), bot->GetZoneId(),
             zone_name);
-        HumanMovement::NoteStuckTeleport(bot->GetMapId(),
-                                         G3D::Vector3(bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ()),
-                                         G3D::Vector3(dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ()));
+        G3D::Vector3 const stuckAt(bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ());
+        G3D::Vector3 const stuckTo(dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ());
+        HumanMovement::NoteStuckTeleport(bot->GetMapId(), stuckAt, stuckTo);
+        LogNavEvent("teleport", stuckAt, stuckTo, "-");
         bot->RemoveAurasWithInterruptFlags(AURA_INTERRUPT_FLAG_TELEPORTED | AURA_INTERRUPT_FLAG_CHANGE_MAP);
         return bot->TeleportTo(dest);
     }
@@ -401,6 +403,10 @@ void NewRpgBaseAction::AbandonRoadRoute()
         }
     }
     HumanMovement::NoteRoadAbandon();
+    LogNavEvent("abandon", G3D::Vector3(bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ()),
+                G3D::Vector3(info.moveFarPos.GetPositionX(), info.moveFarPos.GetPositionY(),
+                             info.moveFarPos.GetPositionZ()),
+                "-");
     road.points.clear();
     road.nodes.clear();
     road.next = 0;
@@ -574,12 +580,18 @@ bool NewRpgBaseAction::MoveHumanTo(uint32 mapId, float x, float y, float z, Move
                 G3D::Vector3 way;
                 bool const approached = ApproachOnFloor(dest, way);
                 HumanMovement::NoteFloorMiss(approached, mapId, here, dest);
+                LogNavEvent("floor", here, dest, approached ? "approached" : "unreachable");
                 if (approached)
                     gen.CalculatePath(way.x, way.y, way.z);
             }
         }
         if (gen.GetPathType() & blocked)
-            HumanMovement::NoteStraight(StraightReason(dest), mapId, here, dest);
+        {
+            HumanMovement::Straight const why = StraightReason(dest);
+            HumanMovement::NoteStraight(why, mapId, here, dest);
+            static char const* const Reasons[] = {"no_tile", "start_off_mesh", "end_off_mesh", "no_route"};
+            LogNavEvent("straight", here, dest, Reasons[size_t(why)]);
+        }
         Movement::PointsArray const& raw = gen.GetPath();
         if (!(gen.GetPathType() & blocked) && raw.size() >= 3)
         {
@@ -659,6 +671,25 @@ bool NewRpgBaseAction::ApproachOnFloor(G3D::Vector3 const& target, G3D::Vector3&
     info.approachMissPos = WorldPosition(bot->GetMapId(), target.x, target.y, target.z);
     info.approachMissTs = getMSTime();
     return false;
+}
+
+// One line per navigation failure for the nav collector, capped by AiPlayerbot.CoaNavEventsPerMinute (read on each
+// event so ".reload config" changes it; 0 = off).
+void NewRpgBaseAction::LogNavEvent(char const* kind, G3D::Vector3 const& from, G3D::Vector3 const& to, char const* why)
+{
+    if (!HumanMovement::TakeNavEventSlot(sConfigMgr->GetOption<uint32>("AiPlayerbot.CoaNavEventsPerMinute", 0, false)))
+        return;
+    static char const* const Statuses[] = {"idle", "go_grind", "go_camp", "wander_random", "wander_npc",
+                                           "do_quest", "travel_flight", "rest", "outdoor_pvp", "go_city"};
+    NewRpgInfo& info = botAI->rpgInfo;
+    NewRpgStatus const status = info.GetStatus();
+    float const trip = info.moveFarPos != WorldPosition() ? bot->GetExactDist(info.moveFarPos) : -1.0f;
+    LOG_INFO("playerbots",
+             "coa navevent kind={} bot={} level={} map={} zone={} area={} from={:.1f},{:.1f},{:.1f} "
+             "to={:.1f},{:.1f},{:.1f} why={} status={} trip={:.0f} road={} awake={}",
+             kind, bot->GetName(), bot->GetLevel(), bot->GetMapId(), bot->GetZoneId(), bot->GetAreaId(), from.x,
+             from.y, from.z, to.x, to.y, to.z, why, status < RPG_STATUS_END ? Statuses[status] : "unknown", trip,
+             OnRoadRoute() ? 1 : 0, botAI->IsActivityAllowedCached() ? 1 : 0);
 }
 
 HumanMovement::Straight NewRpgBaseAction::StraightReason(G3D::Vector3 const& dest)

@@ -921,6 +921,19 @@ void NoteRoadAbandon()
 {
     counters.roadAbandons.fetch_add(1, std::memory_order_relaxed);
 }
+
+bool TakeNavEventSlot(uint32 perMinute)
+{
+    static std::atomic<uint32> window{0};
+    static std::atomic<uint32> used{0};
+    if (!perMinute)
+        return false;
+    uint32 const minute = getMSTime() / MINUTE / IN_MILLISECONDS;
+    uint32 seen = window.load(std::memory_order_relaxed);
+    if (seen != minute && window.compare_exchange_strong(seen, minute, std::memory_order_relaxed))
+        used.store(0, std::memory_order_relaxed);
+    return used.fetch_add(1, std::memory_order_relaxed) < perMinute;
+}
 void SetOnlineBots(uint32 count)
 {
     counters.onlineBots.store(count, std::memory_order_relaxed);

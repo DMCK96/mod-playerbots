@@ -53,6 +53,7 @@ protected:
     bool OnRoadRoute() const;
     bool RoadLegWalkable(WorldPosition const& target);
     void AbandonRoadRoute();
+    void LogNavEvent(char const* kind, G3D::Vector3 const& from, G3D::Vector3 const& to, char const* why);
     void StandCues(WorldObject* facing = nullptr);
 
     /* QUEST RELATED CHECK */
