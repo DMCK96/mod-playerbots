@@ -9,6 +9,7 @@
 
 #include "DBCEnums.h"
 #include "SharedDefines.h"
+#include <atomic>
 #include <algorithm>
 #include <map>
 #include <mutex>
@@ -378,6 +379,8 @@ public:
     bool botActiveAloneSmartScale;
     uint32 botActiveAloneSmartScaleDiffLimitfloor;
     uint32 botActiveAloneSmartScaleDiffLimitCeiling;
+    uint32 botActiveAloneSmartScalePercentile;
+    std::atomic<uint32> smartScaleDiff{0};
     uint32 botActiveAloneSmartScaleWhenMinLevel;
     uint32 botActiveAloneSmartScaleWhenMaxLevel;
 

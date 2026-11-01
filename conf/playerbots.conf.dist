@@ -1367,6 +1367,12 @@ AiPlayerbot.BotActiveAloneForceWhenInGuild = 1
 AiPlayerbot.botActiveAloneSmartScale = 1
 AiPlayerbot.botActiveAloneSmartScaleDiffLimitfloor = 50
 AiPlayerbot.botActiveAloneSmartScaleDiffLimitCeiling = 200
+
+# Which tick time SmartScale reads. 0 = the slowest tick of the last 500 to 1000 (one stray spike then puts nearly
+# every bot to sleep until it ages out). 1 to 100 = that percentile of the last 500 ticks, refreshed every second:
+# 95 ignores the worst 5% of ticks. Can be changed with ".reload config".
+# Default: 0
+AiPlayerbot.botActiveAloneSmartScalePercentile = 0
 AiPlayerbot.botActiveAloneSmartScaleWhenMinLevel = 1
 AiPlayerbot.botActiveAloneSmartScaleWhenMaxLevel = 80
 

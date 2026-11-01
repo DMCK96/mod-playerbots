@@ -26,6 +26,7 @@
 #include "PlayerbotWorldThreadProcessor.h"
 #include "RandomPlayerbotMgr.h"
 #include "ScriptMgr.h"
+#include "UpdateTime.h"
 #include "cmath"
 #include <algorithm>
 #include <fstream>
@@ -488,11 +489,26 @@ public:
             botCountTimer = 0;
             HumanMovement::SetOnlineBots(sRandomPlayerbotMgr.GetPlayerbotsCount());
         }
+
+        smartScaleTimer += diff;
+        if (smartScaleTimer >= SmartScaleRefreshMs)
+        {
+            smartScaleTimer = 0;
+            uint32 const percentile = sPlayerbotAIConfig.botActiveAloneSmartScalePercentile;
+            sPlayerbotAIConfig.smartScaleDiff.store(
+                percentile && sWorldUpdateTime.GetDatasetSize() >= MinDiffSamples
+                    ? uint32(sWorldUpdateTime.GetPercentile(uint8(percentile)))
+                    : sWorldUpdateTime.GetMaxUpdateTimeOfCurrentTable(),
+                std::memory_order_relaxed);
+        }
     }
 
 private:
     static constexpr uint32 BotCountRefreshMs = 10000;
     uint32 botCountTimer = BotCountRefreshMs;
+    static constexpr uint32 SmartScaleRefreshMs = 1000;
+    static constexpr uint32 MinDiffSamples = 50;
+    uint32 smartScaleTimer = 0;
 
 public:
     void OnShutdown() override

@@ -5588,7 +5588,9 @@ bool PlayerbotAI::AllowActivity(ActivityType activityType, bool checkNow)
 uint32 PlayerbotAI::AutoScaleActivity(uint32 mod)
 {
     // Current max server update time (ms), and the configured floor/ceiling values for bot scaling
-    uint32 maxDiff = sWorldUpdateTime.GetMaxUpdateTimeOfCurrentTable();
+    uint32 maxDiff = sPlayerbotAIConfig.botActiveAloneSmartScalePercentile
+                         ? sPlayerbotAIConfig.smartScaleDiff.load(std::memory_order_relaxed)
+                         : sWorldUpdateTime.GetMaxUpdateTimeOfCurrentTable();
     uint32 diffLimitFloor = sPlayerbotAIConfig.botActiveAloneSmartScaleDiffLimitfloor;
     uint32 diffLimitCeiling = sPlayerbotAIConfig.botActiveAloneSmartScaleDiffLimitCeiling;
 
