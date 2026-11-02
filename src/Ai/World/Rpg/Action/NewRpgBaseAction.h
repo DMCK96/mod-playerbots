@@ -98,6 +98,8 @@ protected:
     // A destination off the navmesh moves to the nearest walkable point on its floor within these bounds.
     const float snapHorizontalYards = 8.0f;
     const float snapVerticalYards = 4.0f;
+    // Within this distance of the destination, leaving the road for a direct walk is the end of the trip, not a failure.
+    const float roadLeaveNearYards = 150.0f;
     // A target with no way onto its floor is not searched again for this long.
     const uint32 approachRetryMs = 60 * 1000;
 };

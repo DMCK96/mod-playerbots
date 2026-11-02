@@ -94,6 +94,9 @@ bool HasMeshTile(Map* map, float x, float y, float z);
 // Ground height for a point known only by x and y (quest areas): the terrain when the navmesh lies on it,
 // otherwise the topmost surface as before.
 float PoiHeight(Map* map, float x, float y);
+// The ground (or water surface) at x, y for a destination that has no height of its own. False when neither is known:
+// an unloaded grid gives no ground, and a grid without liquid reports MIN_HEIGHT (-500) as its water level.
+bool GroundHeight(Map* map, float x, float y, float& z);
 
 // Why a move fell back to the core's straight line.
 enum class Straight

@@ -264,6 +264,15 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
                    ? HumanMovement::JitterMs(base, info.startT ^ uint32(bot->GetGUID().GetCounter()))
                    : base;
     };
+    if (HumanMovementRules::ShouldGiveUpTarget(info.unreachable.hits) && status != RPG_IDLE &&
+        status != RPG_TRAVEL_FLIGHT)
+    {
+        LogNavEvent("giveup", G3D::Vector3(bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ()),
+                    G3D::Vector3(info.unreachable.x, info.unreachable.y, info.unreachable.z), "unreachable");
+        info.unreachable = {};
+        info.ChangeToIdle();
+        return true;
+    }
     switch (status)
     {
         case RPG_IDLE:
@@ -581,10 +590,9 @@ bool NewRpgDoQuestAction::DoIncompleteQuest(NewRpgInfo::DoQuest& data)
         float dx = nearestPoi.x, dy = nearestPoi.y;
 
         // no accurate z: the ground the navmesh lies on, else the topmost surface
-        float dz = std::max(HumanMovement::PoiHeight(bot->GetMap(), dx, dy), bot->GetMap()->GetWaterLevel(dx, dy));
-
+        float dz = 0.0f;
         // double check for GetQuestPOIPosAndObjectiveIdx
-        if (dz == INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
+        if (!HumanMovement::GroundHeight(bot->GetMap(), dx, dy, dz))
             return false;
 
         WorldPosition pos = HumanMovement::PickSpotNear(bot, bot->GetMap(), WorldPosition(bot->GetMapId(), dx, dy, dz),
@@ -676,10 +684,9 @@ bool NewRpgDoQuestAction::DoCompletedQuest(NewRpgInfo::DoQuest& data)
         // now we get the place to get rewarded
         float dx = poiInfo[0].pos.x, dy = poiInfo[0].pos.y;
         // no accurate z: the ground the navmesh lies on, else the topmost surface
-        float dz = std::max(HumanMovement::PoiHeight(bot->GetMap(), dx, dy), bot->GetMap()->GetWaterLevel(dx, dy));
-
+        float dz = 0.0f;
         // double check for GetQuestPOIPosAndObjectiveIdx
-        if (dz == INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
+        if (!HumanMovement::GroundHeight(bot->GetMap(), dx, dy, dz))
             return false;
 
         WorldPosition pos(bot->GetMapId(), dx, dy, dz);

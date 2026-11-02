@@ -225,6 +225,25 @@ TEST(HumanMovementRules, FloorMissIsCloseAcrossButAFloorAway)
     EXPECT_FALSE(IsFloorMiss(20.0f, 0.0f, 0.0f, 0.0f, 0.0f, 6.0f));
 }
 
+TEST(HumanMovementRules, RepeatedUnreachableTargetCountsUpThenStartsOver)
+{
+    UnreachableTarget target;
+    EXPECT_EQ(RecordUnreachable(target, 10.0f, 10.0f, 50.0f, 1000, 60000), 1u);
+    EXPECT_EQ(RecordUnreachable(target, 11.0f, 10.5f, 50.0f, 5000, 60000), 2u);
+    EXPECT_EQ(RecordUnreachable(target, 10.0f, 10.0f, 50.0f, 9000, 60000), 3u);
+    EXPECT_EQ(RecordUnreachable(target, 40.0f, 10.0f, 50.0f, 9500, 60000), 1u);
+    EXPECT_EQ(RecordUnreachable(target, 40.0f, 10.0f, 50.0f, 80000, 60000), 1u);
+    EXPECT_EQ(RecordUnreachable(target, 40.0f, 10.0f, 60.0f, 81000, 60000), 1u);
+}
+
+TEST(HumanMovementRules, GivesUpOnATargetAfterThreeUnreachableTries)
+{
+    EXPECT_FALSE(ShouldGiveUpTarget(0));
+    EXPECT_FALSE(ShouldGiveUpTarget(2));
+    EXPECT_TRUE(ShouldGiveUpTarget(3));
+    EXPECT_TRUE(ShouldGiveUpTarget(7));
+}
+
 TEST(HumanMovementIntent, ClaimCountsAndReleaseClears)
 {
     IntentTable table;

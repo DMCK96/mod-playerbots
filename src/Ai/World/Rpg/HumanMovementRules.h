@@ -259,6 +259,45 @@ inline std::vector<float> LaneWeights(std::vector<float> const& along, float tap
     return weights;
 }
 
+// The target a bot keeps failing to reach (a floor it has no way onto), and how often in a row it failed.
+struct UnreachableTarget
+{
+    float x{0.0f};
+    float y{0.0f};
+    float z{0.0f};
+    uint32_t hits{0};
+    uint32_t lastMs{0};
+};
+
+constexpr float SameTargetYards = 3.0f;
+constexpr uint32_t GiveUpHits = 3;
+
+// Counts a failed try at (x, y, z): the same target within windowMs of the last try adds one, anything else starts over.
+inline uint32_t RecordUnreachable(UnreachableTarget& target, float x, float y, float z, uint32_t nowMs,
+                                  uint32_t windowMs)
+{
+    float const dx = x - target.x;
+    float const dy = y - target.y;
+    float const dz = z - target.z;
+    bool const same = target.hits && nowMs - target.lastMs <= windowMs &&
+                      dx * dx + dy * dy + dz * dz <= SameTargetYards * SameTargetYards;
+    if (!same)
+    {
+        target.x = x;
+        target.y = y;
+        target.z = z;
+        target.hits = 0;
+    }
+    ++target.hits;
+    target.lastMs = nowMs;
+    return target.hits;
+}
+
+inline bool ShouldGiveUpTarget(uint32_t hits)
+{
+    return hits >= GiveUpHits;
+}
+
 // A partial path that ends beside its target but a floor above or below it.
 inline bool IsFloorMiss(float endX, float endY, float endZ, float x, float y, float z)
 {

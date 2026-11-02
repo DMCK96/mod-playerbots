@@ -388,9 +388,12 @@ void NewRpgBaseAction::AbandonRoadRoute()
 {
     NewRpgInfo& info = botAI->rpgInfo;
     NewRpgInfo::RoadRoute& road = info.road;
+    // Close to the destination the road is left for the direct walk: not a failed leg, so nothing is blocked or counted.
+    bool const nearEnd =
+        info.moveFarPos != WorldPosition() && bot->GetExactDist(info.moveFarPos) < roadLeaveNearYards;
     // Block the road edges of the leg that failed: from the last waypoint reached to the one aimed at.
     size_t const last = std::min(road.leg, road.nodes.size() - 1);
-    if (!road.nodes.empty() && road.mapId == bot->GetMapId() && last > 0)
+    if (!nearEnd && !road.nodes.empty() && road.mapId == bot->GetMapId() && last > 0)
     {
         if (std::shared_ptr<RoadRules::RoadGraph const> const graph = HumanMovement::RoadGraphFor(bot->GetMapId()))
         {
@@ -402,11 +405,14 @@ void NewRpgBaseAction::AbandonRoadRoute()
             }
         }
     }
-    HumanMovement::NoteRoadAbandon();
-    LogNavEvent("abandon", G3D::Vector3(bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ()),
-                G3D::Vector3(info.moveFarPos.GetPositionX(), info.moveFarPos.GetPositionY(),
-                             info.moveFarPos.GetPositionZ()),
-                "-");
+    if (!nearEnd)
+    {
+        HumanMovement::NoteRoadAbandon();
+        LogNavEvent("abandon", G3D::Vector3(bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ()),
+                    G3D::Vector3(info.moveFarPos.GetPositionX(), info.moveFarPos.GetPositionY(),
+                                 info.moveFarPos.GetPositionZ()),
+                    "-");
+    }
     road.points.clear();
     road.nodes.clear();
     road.next = 0;
@@ -581,6 +587,9 @@ bool NewRpgBaseAction::MoveHumanTo(uint32 mapId, float x, float y, float z, Move
                 bool const approached = ApproachOnFloor(dest, way);
                 HumanMovement::NoteFloorMiss(approached, mapId, here, dest);
                 LogNavEvent("floor", here, dest, approached ? "approached" : "unreachable");
+                if (!approached)
+                    HumanMovementRules::RecordUnreachable(botAI->rpgInfo.unreachable, dest.x, dest.y, dest.z,
+                                                          getMSTime(), approachRetryMs);
                 if (approached)
                     gen.CalculatePath(way.x, way.y, way.z);
             }
@@ -1455,9 +1464,8 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
             if (bot->GetDistance2d(dx, dy) >= 1500.0f)
                 continue;
 
-            float dz = std::max(HumanMovement::PoiHeight(bot->GetMap(), dx, dy), bot->GetMap()->GetWaterLevel(dx, dy));
-
-            if (dz == INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
+            float dz = 0.0f;
+            if (!HumanMovement::GroundHeight(bot->GetMap(), dx, dy, dz))
                 continue;
 
             if (bot->GetZoneId() != bot->GetMap()->GetZoneId(bot->GetPhaseMask(), dx, dy, dz))
@@ -1527,9 +1535,8 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
         if (bot->GetDistance2d(dx, dy) >= 1500.0f)
             continue;
 
-        float dz = std::max(HumanMovement::PoiHeight(bot->GetMap(), dx, dy), bot->GetMap()->GetWaterLevel(dx, dy));
-
-        if (dz == INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
+        float dz = 0.0f;
+        if (!HumanMovement::GroundHeight(bot->GetMap(), dx, dy, dz))
             continue;
 
         if (bot->GetZoneId() != bot->GetMap()->GetZoneId(bot->GetPhaseMask(), dx, dy, dz))
@@ -1695,6 +1702,11 @@ WorldPosition NewRpgBaseAction::SelectRandomGrindPos(Player* bot)
     {
         int32 const chosen = ChoosePlace(bot, PlaceCandidates(*pool, HumanMovementRules::TargetKind::Place));
         dest = (*pool)[chosen >= 0 ? uint32(chosen) : urand(0, pool->size() - 1)];
+        // Grind places are 50-yard cells whose height is the cell's, not the ground's: put the place on the ground so
+        // the spot search and the path aim at a floor bots can stand on.
+        float ground = 0.0f;
+        if (HumanMovement::GroundHeight(bot->GetMap(), dest.GetPositionX(), dest.GetPositionY(), ground))
+            dest = WorldPosition(dest.GetMapId(), dest.GetPositionX(), dest.GetPositionY(), ground);
     }
     dest = HumanMovement::PickSpotNear(bot, bot->GetMap(), dest, HumanMovement::SpotKind::Field);
     LOG_DEBUG("playerbots", "[New RPG] Bot {} select random grind pos Map:{} X:{} Y:{} Z:{} ({}+{} available in {})",

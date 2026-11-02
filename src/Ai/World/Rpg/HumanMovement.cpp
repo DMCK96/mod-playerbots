@@ -12,6 +12,7 @@
 #include "G3D/Vector2.h"
 #include "GridNotifiers.h"
 #include "GridNotifiersImpl.h"
+#include "GridTerrainData.h"
 #include "IVMapMgr.h"
 #include "Log.h"
 #include "Map.h"
@@ -739,6 +740,18 @@ float PoiHeight(Map* map, float x, float y)
     if (UsableHeight(terrain) && NearestMeshPoint(map, x, y, terrain, 3.0f, 4.0f, onMesh))
         return onMesh.z;
     return map->GetHeight(x, y, MAX_HEIGHT);
+}
+
+bool GroundHeight(Map* map, float x, float y, float& z)
+{
+    float const ground = PoiHeight(map, x, y);
+    float const water = map->GetWaterLevel(x, y);
+    bool const hasGround = UsableHeight(ground) && ground > MIN_HEIGHT;
+    bool const hasWater = UsableHeight(water) && water > MIN_HEIGHT;
+    if (!hasGround && !hasWater)
+        return false;
+    z = hasGround && hasWater ? std::max(ground, water) : hasGround ? ground : water;
+    return true;
 }
 
 void NoteStraight(Straight why, uint32 mapId, G3D::Vector3 const& from, G3D::Vector3 const& to)

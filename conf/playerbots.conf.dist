@@ -1739,7 +1739,7 @@ AiPlayerbot.CoaTargetSpread = 1
 AiPlayerbot.CoaRoutePauseYards = 400
 
 # One "coa navevent" line in Playerbots.log per navigation failure (stuck teleport, floor miss, straight-line
-# fallback, abandoned road leg) with the bot, zone, positions, RPG status and trip length, at most this many per
+# fallback, abandoned road leg, and "giveup" when a bot drops a status after failing to reach its target 3 times) with the bot, zone, positions, RPG status and trip length, at most this many per
 # minute. Read on every event, so ".reload config" changes it. 0 = no lines.
 # Default: 0
 AiPlayerbot.CoaNavEventsPerMinute = 0

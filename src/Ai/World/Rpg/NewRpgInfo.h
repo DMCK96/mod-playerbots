@@ -8,6 +8,7 @@
 #define PLAYERBOTS_NEWRPGINFO_H
 
 #include "Define.h"
+#include "HumanMovementRules.h"
 #include "HumanMovementTargets.h"
 #include "ObjectGuid.h"
 #include "ObjectMgr.h"
@@ -114,6 +115,8 @@ struct NewRpgInfo
     // Last target whose floor could not be reached, so the search is not repeated every tick.
     WorldPosition approachMissPos{};
     uint32 approachMissTs{0};
+    // The target this bot keeps failing to reach; the status is dropped once it fails often enough.
+    HumanMovementRules::UnreachableTarget unreachable{};
     // END MOVE_FAR
 
     using RpgData = std::variant<
