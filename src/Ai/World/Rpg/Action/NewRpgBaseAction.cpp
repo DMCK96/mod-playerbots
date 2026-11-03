@@ -347,14 +347,17 @@ WorldPosition NewRpgBaseAction::RoadLegTarget(WorldPosition const& dest)
     float x = node.GetPositionX();
     float y = node.GetPositionY();
     float z = node.GetPositionZ();
+    float const nodeZ = z;
     float ground = bot->GetMap()->GetHeight(bot->GetPhaseMask(), x, y, z + 10.0f, true, 50.0f);
     if (ground <= INVALID_HEIGHT)
         ground = bot->GetMap()->GetHeight(bot->GetPhaseMask(), x, y, bot->GetPositionZ() + 100.0f, true, 400.0f);
     if (ground > INVALID_HEIGHT)
         z = ground;
-    // Road nodes carry the terrain height, which is wrong on bridges and in towns: aim at the navmesh there.
+    // Road nodes carry the terrain height, which is wrong on bridges and in towns: aim at the navmesh there. A probed
+    // surface with no walkable floor near it (the roof of a building over the road) is not the road: keep the node's own.
     G3D::Vector3 onMesh;
-    if (HumanMovement::NearestMeshPoint(bot->GetMap(), x, y, z, 4.0f, 6.0f, onMesh))
+    if (HumanMovement::NearestMeshPoint(bot->GetMap(), x, y, z, 4.0f, 6.0f, onMesh) ||
+        (z != nodeZ && HumanMovement::NearestMeshPoint(bot->GetMap(), x, y, nodeZ, 4.0f, 6.0f, onMesh)))
     {
         x = onMesh.x;
         y = onMesh.y;

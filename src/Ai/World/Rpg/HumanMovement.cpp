@@ -751,7 +751,7 @@ HeightProbe ProbeHeights(Map* map, float x, float y, float z)
 {
     HeightProbe probe;
     float const terrain = map->GetHeight(x, y, MAX_HEIGHT, false);
-    float const model = map->GetHeight(x, y, MAX_HEIGHT);
+    float const model = map->GetHeight(PHASEMASK_ANYWHERE, x, y, z + 2.0f, true, 50.0f);
     if (UsableHeight(terrain))
         probe.terrain = terrain;
     if (UsableHeight(model))

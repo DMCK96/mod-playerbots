@@ -98,8 +98,8 @@ float PoiHeight(Map* map, float x, float y);
 // an unloaded grid gives no ground, and a grid without liquid reports MIN_HEIGHT (-500) as its water level.
 bool GroundHeight(Map* map, float x, float y, float& z);
 
-// The surfaces under a destination, for the failure log: the terrain alone, the topmost surface with models, and the
-// navmesh point near z. A value the map does not know is reported as MIN_HEIGHT.
+// The surfaces under a destination, for the failure log: the terrain alone, the surface at or just below z with models
+// (a roof or a floor), and the navmesh point near z. A value the map does not know is reported as MIN_HEIGHT.
 struct HeightProbe
 {
     float terrain{MIN_HEIGHT};
