@@ -33,6 +33,7 @@
 #include "TravelMgr.h"
 #include "WaypointMovementGenerator.h"
 #include "G3D/Vector2.h"
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 
@@ -241,6 +242,11 @@ bool StartRpgDoQuestAction::Execute(Event event)
     bot->Whisper("Invalid quest " + text, LANG_UNIVERSAL, owner);
     return false;
 }
+
+namespace
+{
+constexpr float PoiMeshYards = 30.0f;
+}  // namespace
 
 bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
 {
@@ -581,6 +587,25 @@ bool NewRpgDoQuestAction::DoIncompleteQuest(NewRpgInfo::DoQuest& data)
         if (!GetQuestPOIPosAndObjectiveIdx(questId, poiInfo))
         {
             // can't find a poi pos to go, stop doing quest for now
+            botAI->rpgInfo.ChangeToIdle();
+            return true;
+        }
+        // A quest point the navmesh does not reach (a mountain top, a placeholder coordinate) is a trip that ends in a
+        // stuck teleport: leave it out, and do the quest later if none of its points is usable.
+        Map* const map = bot->GetMap();
+        poiInfo.erase(std::remove_if(poiInfo.begin(), poiInfo.end(),
+                                     [&](POIInfo const& poi)
+                                     {
+                                         float z = 0.0f;
+                                         G3D::Vector3 onMesh;
+                                         return !HumanMovement::GroundHeight(map, poi.pos.x, poi.pos.y, z) ||
+                                                (HumanMovement::HasMeshTile(map, poi.pos.x, poi.pos.y, z) &&
+                                                 !HumanMovement::NearestMeshPoint(map, poi.pos.x, poi.pos.y, z,
+                                                                                  PoiMeshYards, PoiMeshYards, onMesh));
+                                     }),
+                      poiInfo.end());
+        if (poiInfo.empty())
+        {
             botAI->rpgInfo.ChangeToIdle();
             return true;
         }

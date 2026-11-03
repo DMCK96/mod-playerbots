@@ -332,6 +332,14 @@ struct AvoidedTargets
     }
 };
 
+constexpr float UnderWorldYards = 15.0f;
+
+// A bot this far below the terrain with no navmesh near it has fallen through the world: it cannot walk back.
+inline bool IsUnderWorld(float botZ, float terrainZ, bool meshNearby)
+{
+    return !meshNearby && terrainZ - botZ >= UnderWorldYards;
+}
+
 // A partial path that ends beside its target but a floor above or below it.
 inline bool IsFloorMiss(float endX, float endY, float endZ, float x, float y, float z)
 {

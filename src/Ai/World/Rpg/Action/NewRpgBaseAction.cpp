@@ -70,6 +70,9 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
         botAI->rpgInfo.SetMoveFarTo(dest);
     }
 
+    if (RescueFromUnderWorld(dest))
+        return true;
+
     // performance optimization
     if (IsWaitingForLastMove(MovementPriority::MOVEMENT_NORMAL))
     {
@@ -685,6 +688,30 @@ bool NewRpgBaseAction::ApproachOnFloor(G3D::Vector3 const& target, G3D::Vector3&
     info.approachMissPos = WorldPosition(bot->GetMapId(), target.x, target.y, target.z);
     info.approachMissTs = getMSTime();
     return false;
+}
+
+// A bot below the terrain with no navmesh near it (it fell through the world) goes to the nearest navmesh point above
+// it, or to its destination: the straight-line fallback it would otherwise repeat never brings it back.
+bool NewRpgBaseAction::RescueFromUnderWorld(WorldPosition const& dest)
+{
+    Map* map = bot->GetMap();
+    float const x = bot->GetPositionX();
+    float const y = bot->GetPositionY();
+    float const z = bot->GetPositionZ();
+    float const terrain = map->GetHeight(x, y, MAX_HEIGHT, false);
+    G3D::Vector3 onMesh;
+    if (terrain <= INVALID_HEIGHT || !HumanMovement::HasMeshTile(map, x, y, terrain) ||
+        !HumanMovementRules::IsUnderWorld(z, terrain, HumanMovement::NearestMeshPoint(map, x, y, z, 3.0f, 50.0f, onMesh)))
+        return false;
+
+    G3D::Vector3 const here(x, y, z);
+    G3D::Vector3 to(dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ());
+    if (HumanMovement::NearestMeshPoint(map, x, y, terrain, 60.0f, 80.0f, onMesh))
+        to = onMesh;
+    HumanMovement::NoteStuckTeleport(bot->GetMapId(), here, to);
+    LogNavEvent("teleport", here, to, "under_world");
+    bot->RemoveAurasWithInterruptFlags(AURA_INTERRUPT_FLAG_TELEPORTED | AURA_INTERRUPT_FLAG_CHANGE_MAP);
+    return bot->TeleportTo(bot->GetMapId(), to.x, to.y, to.z, bot->GetOrientation());
 }
 
 // One line per navigation failure for the nav collector, capped by AiPlayerbot.CoaNavEventsPerMinute (read on each

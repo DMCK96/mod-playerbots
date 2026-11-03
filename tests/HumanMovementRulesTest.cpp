@@ -326,3 +326,13 @@ TEST(HumanMovementIntent, RefreshWithoutClaimDoesNothing)
     EXPECT_TRUE(table.Empty());
     EXPECT_EQ(table.ClaimOf(9, 100), NoTarget);
 }
+
+TEST(HumanMovementRules, BotFarBelowTheTerrainWithNoMeshHasFallenThroughTheWorld)
+{
+    using namespace HumanMovementRules;
+    EXPECT_TRUE(IsUnderWorld(-22.8f, 43.2f, false));
+    EXPECT_FALSE(IsUnderWorld(-22.8f, 43.2f, true));
+    EXPECT_FALSE(IsUnderWorld(35.0f, 43.2f, false));
+    EXPECT_FALSE(IsUnderWorld(43.2f - UnderWorldYards + 0.1f, 43.2f, false));
+    EXPECT_TRUE(IsUnderWorld(43.2f - UnderWorldYards, 43.2f, false));
+}

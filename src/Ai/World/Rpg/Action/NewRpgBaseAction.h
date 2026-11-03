@@ -55,6 +55,7 @@ protected:
     void AbandonRoadRoute();
     void LogNavEvent(char const* kind, G3D::Vector3 const& from, G3D::Vector3 const& to, char const* why);
     std::string DescribeNavTarget();
+    bool RescueFromUnderWorld(WorldPosition const& dest);
     void StandCues(WorldObject* facing = nullptr);
 
     /* QUEST RELATED CHECK */
