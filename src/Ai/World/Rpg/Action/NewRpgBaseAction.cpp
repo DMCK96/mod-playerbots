@@ -37,10 +37,12 @@
 #include "QuestDef.h"
 #include "QuestPackets.h"
 #include "Random.h"
+#include <algorithm>
 #include <cmath>
 #include "RandomPlayerbotMgr.h"
 #include "SharedDefines.h"
 #include "StatsWeightCalculator.h"
+#include "StringFormat.h"
 #include "Timer.h"
 #include "TravelMgr.h"
 #include "G3D/Vector2.h"
@@ -699,6 +701,59 @@ void NewRpgBaseAction::LogNavEvent(char const* kind, G3D::Vector3 const& from, G
              kind, bot->GetName(), bot->GetLevel(), bot->GetMapId(), bot->GetZoneId(), bot->GetAreaId(), from.x,
              from.y, from.z, to.x, to.y, to.z, why, status < RPG_STATUS_END ? Statuses[status] : "unknown", trip,
              OnRoadRoute() ? 1 : 0, botAI->IsActivityAllowedCached() ? 1 : 0);
+
+    HumanMovement::HeightProbe const heights = HumanMovement::ProbeHeights(bot->GetMap(), to.x, to.y, to.z);
+    LOG_INFO("playerbots", "coa navtarget bot={} kind={} to={:.1f},{:.1f},{:.1f} {} ground={:.1f} model={:.1f} mesh={:.1f}",
+             bot->GetName(), kind, to.x, to.y, to.z, DescribeNavTarget(), heights.terrain, heights.model, heights.mesh);
+}
+
+std::string NewRpgBaseAction::DescribeNavTarget()
+{
+    auto const place = [](WorldPosition const& pos)
+    {
+        return Acore::StringFormat("{:.1f},{:.1f},{:.1f}", pos.GetPositionX(), pos.GetPositionY(), pos.GetPositionZ());
+    };
+    auto const named = [](WorldObject const* object)
+    {
+        std::string name = object->GetName();
+        std::replace(name.begin(), name.end(), ' ', '_');
+        return name;
+    };
+
+    NewRpgInfo& info = botAI->rpgInfo;
+    std::string target = "owner=-";
+    if (auto const* wander = std::get_if<NewRpgInfo::WanderNpc>(&info.data))
+    {
+        WorldObject const* object = wander->npcOrGo ? ObjectAccessor::GetWorldObject(*bot, wander->npcOrGo) : nullptr;
+        if (!object)
+            target = "owner=npc_or_go:gone";
+        else if (Creature const* creature = object->ToCreature())
+            target = Acore::StringFormat("owner=npc:{}:{}:{} at={:.1f},{:.1f},{:.1f}", creature->GetEntry(),
+                                         creature->GetSpawnId(), named(creature), creature->GetPositionX(),
+                                         creature->GetPositionY(), creature->GetPositionZ());
+        else
+            target = Acore::StringFormat("owner=go:{}:{}:{} at={:.1f},{:.1f},{:.1f}", object->GetEntry(),
+                                         object->ToGameObject() ? object->ToGameObject()->GetSpawnId() : 0,
+                                         named(object), object->GetPositionX(), object->GetPositionY(),
+                                         object->GetPositionZ());
+        if (wander->spot != WorldPosition())
+            target += " spot=" + place(wander->spot);
+    }
+    else if (auto const* quest = std::get_if<NewRpgInfo::DoQuest>(&info.data))
+        target = Acore::StringFormat("owner=quest:{}:{} poi={}", quest->questId, quest->objectiveIdx, place(quest->pos));
+    else if (auto const* grind = std::get_if<NewRpgInfo::GoGrind>(&info.data))
+        target = "owner=grind poi=" + place(grind->pos);
+    else if (auto const* camp = std::get_if<NewRpgInfo::GoCamp>(&info.data))
+        target = "owner=camp poi=" + place(camp->pos);
+    else if (auto const* city = std::get_if<NewRpgInfo::GoCity>(&info.data))
+        target = "owner=city poi=" + place(city->pos);
+    else if (auto const* random = std::get_if<NewRpgInfo::WanderRandom>(&info.data))
+        target = "owner=place spot=" + place(random->spot);
+    else if (auto const* flight = std::get_if<NewRpgInfo::TravelFlight>(&info.data))
+        target = Acore::StringFormat("owner=flight:{} at={}", flight->flightMasterEntry, place(flight->flightMasterPos));
+    if (info.moveFarPos != WorldPosition())
+        target += " far=" + place(info.moveFarPos);
+    return target;
 }
 
 HumanMovement::Straight NewRpgBaseAction::StraightReason(G3D::Vector3 const& dest)

@@ -747,6 +747,21 @@ float PoiHeight(Map* map, float x, float y)
     return model;
 }
 
+HeightProbe ProbeHeights(Map* map, float x, float y, float z)
+{
+    HeightProbe probe;
+    float const terrain = map->GetHeight(x, y, MAX_HEIGHT, false);
+    float const model = map->GetHeight(x, y, MAX_HEIGHT);
+    if (UsableHeight(terrain))
+        probe.terrain = terrain;
+    if (UsableHeight(model))
+        probe.model = model;
+    G3D::Vector3 onMesh;
+    if (NearestMeshPoint(map, x, y, z, 3.0f, 4.0f, onMesh))
+        probe.mesh = onMesh.z;
+    return probe;
+}
+
 bool GroundHeight(Map* map, float x, float y, float& z)
 {
     float const ground = PoiHeight(map, x, y);
