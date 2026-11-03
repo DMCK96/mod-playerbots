@@ -739,7 +739,12 @@ float PoiHeight(Map* map, float x, float y)
     G3D::Vector3 onMesh;
     if (UsableHeight(terrain) && NearestMeshPoint(map, x, y, terrain, 3.0f, 4.0f, onMesh))
         return onMesh.z;
-    return map->GetHeight(x, y, MAX_HEIGHT);
+    float const model = map->GetHeight(x, y, MAX_HEIGHT);
+    // A model top that no walkable floor sits under (a hanging lamp or streamer) is not ground: keep the terrain.
+    if (UsableHeight(terrain) && UsableHeight(model) && HasMeshTile(map, x, y, terrain) &&
+        !NearestMeshPoint(map, x, y, model, 3.0f, 4.0f, onMesh))
+        return terrain;
+    return model;
 }
 
 bool GroundHeight(Map* map, float x, float y, float& z)

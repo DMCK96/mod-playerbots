@@ -298,6 +298,40 @@ inline bool ShouldGiveUpTarget(uint32_t hits)
     return hits >= GiveUpHits;
 }
 
+constexpr float AvoidRadiusYards = 8.0f;
+constexpr uint32_t AvoidMs = 30 * 60 * 1000;
+
+// Targets a bot gave up on, kept for a while so the next choice does not head straight back to them.
+struct AvoidedTargets
+{
+    static constexpr size_t Capacity = 4;
+
+    struct Entry
+    {
+        float x{0.0f};
+        float y{0.0f};
+        uint32_t untilMs{0};
+    };
+
+    std::array<Entry, Capacity> entries{};
+    size_t next{0};
+
+    void Avoid(float x, float y, uint32_t nowMs, uint32_t forMs = AvoidMs)
+    {
+        entries[next] = {x, y, nowMs + forMs};
+        next = (next + 1) % Capacity;
+    }
+
+    bool Contains(float x, float y, uint32_t nowMs) const
+    {
+        return std::any_of(entries.begin(), entries.end(), [&](Entry const& e)
+        {
+            return e.untilMs && int32_t(e.untilMs - nowMs) > 0 &&
+                   std::hypot(e.x - x, e.y - y) <= AvoidRadiusYards;
+        });
+    }
+};
+
 // A partial path that ends beside its target but a floor above or below it.
 inline bool IsFloorMiss(float endX, float endY, float endZ, float x, float y, float z)
 {

@@ -1287,12 +1287,18 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
     if (possibleTargets.empty() && possibleGameObjects.empty())
         return ObjectGuid();
 
+    uint32 const now = getMSTime();
+    auto const avoided = [&](WorldObject const* object)
+    {
+        return botAI->rpgInfo.avoided.Contains(object->GetPositionX(), object->GetPositionY(), now);
+    };
+
     WorldObject* nearestObject = nullptr;
     for (ObjectGuid& guid : possibleTargets)
     {
         WorldObject* object = ObjectAccessor::GetWorldObject(*bot, guid);
 
-        if (!object || !object->IsInWorld())
+        if (!object || !object->IsInWorld() || avoided(object))
             continue;
 
         if (distanceLimit && bot->GetDistance(object) > distanceLimit)
@@ -1310,7 +1316,7 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
     {
         WorldObject* object = ObjectAccessor::GetWorldObject(*bot, guid);
 
-        if (!object || !object->IsInWorld())
+        if (!object || !object->IsInWorld() || avoided(object))
             continue;
 
         if (distanceLimit && bot->GetDistance(object) > distanceLimit)
@@ -1341,7 +1347,7 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
         for (ObjectGuid const& guid : possibleTargets)
         {
             Creature* creature = ObjectAccessor::GetCreature(*bot, guid);
-            if (!creature || !creature->IsInWorld())
+            if (!creature || !creature->IsInWorld() || avoided(creature))
                 continue;
             candidates.push_back({HumanMovement::NpcTargetKey(creature), HumanMovement::KindForNpc(creature),
                                   WorldPosition(creature)});
@@ -1358,7 +1364,7 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
     if (!object)
         object = ObjectAccessor::GetGameObject(*bot, guid);
 
-    if (object && object->IsInWorld())
+    if (object && object->IsInWorld() && !avoided(object))
     {
         return object->GetGUID();
     }
@@ -1608,6 +1614,9 @@ bool NewRpgBaseAction::WanderBetweenPlaces()
                                          loc.GetPositionZ()) != bot->GetZoneId())
                 continue;
             nearby.push_back(loc);
+            float ground = 0.0f;
+            if (HumanMovement::GroundHeight(bot->GetMap(), loc.GetPositionX(), loc.GetPositionY(), ground))
+                nearby.back().m_positionZ = ground;
         }
         std::vector<HumanMovement::Candidate> const candidates =
             PlaceCandidates(nearby, HumanMovementRules::TargetKind::Place);

@@ -117,6 +117,7 @@ struct NewRpgInfo
     uint32 approachMissTs{0};
     // The target this bot keeps failing to reach; the status is dropped once it fails often enough.
     HumanMovementRules::UnreachableTarget unreachable{};
+    HumanMovementRules::AvoidedTargets avoided{};
     // END MOVE_FAR
 
     using RpgData = std::variant<

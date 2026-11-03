@@ -244,6 +244,27 @@ TEST(HumanMovementRules, GivesUpOnATargetAfterThreeUnreachableTries)
     EXPECT_TRUE(ShouldGiveUpTarget(7));
 }
 
+TEST(HumanMovementRules, AvoidedTargetIsRememberedNearbyUntilItExpires)
+{
+    AvoidedTargets avoided;
+    EXPECT_FALSE(avoided.Contains(10.0f, 10.0f, 1000));
+    avoided.Avoid(10.0f, 10.0f, 1000, 5000);
+    EXPECT_TRUE(avoided.Contains(10.0f, 10.0f, 1000));
+    EXPECT_TRUE(avoided.Contains(14.0f, 13.0f, 5999));
+    EXPECT_FALSE(avoided.Contains(30.0f, 10.0f, 2000));
+    EXPECT_FALSE(avoided.Contains(10.0f, 10.0f, 6000));
+}
+
+TEST(HumanMovementRules, AvoidedTargetsKeepTheNewestFew)
+{
+    AvoidedTargets avoided;
+    for (uint32_t i = 0; i < AvoidedTargets::Capacity + 1; ++i)
+        avoided.Avoid(100.0f * float(i), 0.0f, 0, 5000);
+    EXPECT_FALSE(avoided.Contains(0.0f, 0.0f, 100));
+    EXPECT_TRUE(avoided.Contains(100.0f, 0.0f, 100));
+    EXPECT_TRUE(avoided.Contains(100.0f * float(AvoidedTargets::Capacity), 0.0f, 100));
+}
+
 TEST(HumanMovementIntent, ClaimCountsAndReleaseClears)
 {
     IntentTable table;

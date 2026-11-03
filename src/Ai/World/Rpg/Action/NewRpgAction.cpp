@@ -269,6 +269,7 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
     {
         LogNavEvent("giveup", G3D::Vector3(bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ()),
                     G3D::Vector3(info.unreachable.x, info.unreachable.y, info.unreachable.z), "unreachable");
+        info.avoided.Avoid(info.unreachable.x, info.unreachable.y, getMSTime());
         info.unreachable = {};
         info.ChangeToIdle();
         return true;
