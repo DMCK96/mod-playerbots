@@ -34,6 +34,7 @@
 #include "WaypointMovementGenerator.h"
 #include "G3D/Vector2.h"
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdlib>
 
@@ -245,7 +246,8 @@ bool StartRpgDoQuestAction::Execute(Event event)
 
 namespace
 {
-constexpr float PoiMeshYards = 30.0f;
+constexpr float PoiOnMeshYards = 3.0f;
+constexpr std::array<float, 3> PoiMeshSearchYards = {30.0f, 60.0f, 120.0f};
 }  // namespace
 
 bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
@@ -590,20 +592,35 @@ bool NewRpgDoQuestAction::DoIncompleteQuest(NewRpgInfo::DoQuest& data)
             botAI->rpgInfo.ChangeToIdle();
             return true;
         }
-        // A quest point the navmesh does not reach (a mountain top, a placeholder coordinate) is a trip that ends in a
-        // stuck teleport: leave it out, and do the quest later if none of its points is usable.
+        // A quest point the navmesh does not reach (a mountain top, a placeholder coordinate) is moved to the nearest
+        // walkable ground around it, where the quest's mobs and items are still within reach. The quest is only put
+        // off when there is no navmesh at all near the point.
         Map* const map = bot->GetMap();
-        poiInfo.erase(std::remove_if(poiInfo.begin(), poiInfo.end(),
-                                     [&](POIInfo const& poi)
-                                     {
-                                         float z = 0.0f;
-                                         G3D::Vector3 onMesh;
-                                         return !HumanMovement::GroundHeight(map, poi.pos.x, poi.pos.y, z) ||
-                                                (HumanMovement::HasMeshTile(map, poi.pos.x, poi.pos.y, z) &&
-                                                 !HumanMovement::NearestMeshPoint(map, poi.pos.x, poi.pos.y, z,
-                                                                                  PoiMeshYards, PoiMeshYards, onMesh));
-                                     }),
-                      poiInfo.end());
+        std::vector<POIInfo> reachable;
+        for (POIInfo poi : poiInfo)
+        {
+            float z = 0.0f;
+            if (!HumanMovement::GroundHeight(map, poi.pos.x, poi.pos.y, z))
+                continue;
+            if (HumanMovement::HasMeshTile(map, poi.pos.x, poi.pos.y, z))
+            {
+                G3D::Vector3 onMesh;
+                bool found = false;
+                for (float const yards : PoiMeshSearchYards)
+                {
+                    if (!HumanMovement::NearestMeshPoint(map, poi.pos.x, poi.pos.y, z, yards, yards, onMesh))
+                        continue;
+                    if (std::hypot(onMesh.x - poi.pos.x, onMesh.y - poi.pos.y) > PoiOnMeshYards)
+                        poi.pos = G3D::Vector2(onMesh.x, onMesh.y);
+                    found = true;
+                    break;
+                }
+                if (!found)
+                    continue;
+            }
+            reachable.push_back(poi);
+        }
+        poiInfo = std::move(reachable);
         if (poiInfo.empty())
         {
             botAI->rpgInfo.ChangeToIdle();
