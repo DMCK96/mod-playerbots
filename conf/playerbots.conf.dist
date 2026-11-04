@@ -1716,11 +1716,10 @@ AiPlayerbot.CoaDwell = 1
 # Default: 1 (enabled)
 AiPlayerbot.CoaPolish = 1
 
-# RPG ground moves are launched as a smooth curve through the navmesh path, moved into the bot's own
-# lane: a fixed sideways offset of 0.6-2 yards that eases in and out at the ends, so bots on the same
-# route walk side by side instead of in single file. Moves that fly, swim, ride a vehicle, start or end
-# indoors, turn sharply or are too short stay on the stock path.
-# Costs about three times the bytes of a plain move to each player who sees the bot.
+# RPG ground moves are launched through the navmesh path moved into the bot's own lane: a fixed
+# sideways offset of 0.6-2 yards that eases in and out at the ends, so bots on the same route walk side
+# by side instead of in single file. Moves that fly, swim, ride a vehicle, start or end indoors or are
+# too short stay on the stock path. Corners are rounded by AiPlayerbot.CoaCornerRounding.
 # Default: 1 (enabled)
 AiPlayerbot.CoaSmoothPaths = 1
 

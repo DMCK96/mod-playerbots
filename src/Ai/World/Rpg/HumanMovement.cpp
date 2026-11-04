@@ -51,7 +51,6 @@ constexpr uint32 BoardSweepMs = 60 * 1000;
 constexpr float LiveRadiusNpc = 6.0f;
 constexpr float LiveRadiusPlace = 20.0f;
 constexpr float LiveScanMaxDistance = 300.0f;
-constexpr float MaxSegmentTurnCos = 0.26f;  // cos(75 degrees): sharper turns stay on the stock path
 constexpr size_t MinCurvePoints = 5;
 constexpr float MaxChordHeightError = 1.2f;
 constexpr int ChordPolyCap = 16;
@@ -658,18 +657,6 @@ bool Humanize(Player* bot, Movement::PointsArray const& in, Movement::PointsArra
 {
     if (!sPlayerbotAIConfig.coaSmoothPaths || in.size() < MinCurvePoints || !bot->IsOutdoors())
         return false;
-
-    for (size_t i = 1; i + 1 < in.size(); ++i)
-    {
-        G3D::Vector2 const a(in[i].x - in[i - 1].x, in[i].y - in[i - 1].y);
-        G3D::Vector2 const b(in[i + 1].x - in[i].x, in[i + 1].y - in[i].y);
-        float const la = a.length();
-        float const lb = b.length();
-        if (la < 0.01f || lb < 0.01f)
-            continue;
-        if (a.dot(b) / (la * lb) < MaxSegmentTurnCos)
-            return false;
-    }
 
     Map* map = bot->GetMap();
     uint32 const phase = bot->GetPhaseMask();
