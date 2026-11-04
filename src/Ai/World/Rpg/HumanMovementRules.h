@@ -228,6 +228,16 @@ inline size_t PauseCutIndex(size_t pointCount, float u)
     return std::min(pick, hi);
 }
 
+constexpr float RoadHandoffYards = 10.0f;
+constexpr uint32_t RoadHandoffMs = 1500;
+
+// A bot walking a road leg plans the next one while this much of the current spline is left, so it never stops
+// between legs.
+inline bool ShouldHandOffLeg(bool onRoadRoute, bool moving, float remainingYards, uint32_t remainingMs)
+{
+    return onRoadRoute && moving && (remainingYards <= RoadHandoffYards || remainingMs <= RoadHandoffMs);
+}
+
 constexpr float MinLaneYards = 0.6f;
 constexpr float MaxLaneYards = 2.0f;
 

@@ -70,8 +70,10 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
         botAI->rpgInfo.SetMoveFarTo(dest);
     }
 
+    bool const handoff = RoadLegHandoff();
+
     // performance optimization
-    if (IsWaitingForLastMove(MovementPriority::MOVEMENT_NORMAL))
+    if (!handoff && IsWaitingForLastMove(MovementPriority::MOVEMENT_NORMAL))
     {
         return false;
     }
@@ -99,7 +101,7 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
     // committed paths genuinely aren't closing the gap.
     {
         LastMovement& lastMove = AI_VALUE(LastMovement&, "last movement");
-        if (bot->isMoving() && lastMove.lastMoveToMapId == bot->GetMapId())
+        if (!handoff && bot->isMoving() && lastMove.lastMoveToMapId == bot->GetMapId())
         {
             float remaining = bot->GetExactDist(lastMove.lastMoveToX, lastMove.lastMoveToY, lastMove.lastMoveToZ);
             if (remaining > 10.0f || botAI->rpgInfo.pausePos != WorldPosition())
@@ -167,7 +169,7 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
         }
         return MoveHumanTo(target.GetMapId(), target.GetPositionX(), target.GetPositionY(), target.GetPositionZ(),
                            MovementPriority::MOVEMENT_NORMAL,
-                           RoutePauseChance(dest));
+                           RoutePauseChance(dest), handoff);
     }
 
     const uint32 typeOk = PATHFIND_NORMAL | PATHFIND_INCOMPLETE | PATHFIND_FARFROMPOLY;
@@ -204,7 +206,7 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
             if (endDistToDest + 5.0f < disToDest)
             {
                 return MoveHumanTo(bot->GetMapId(), endPos.x, endPos.y, endPos.z, MovementPriority::MOVEMENT_NORMAL,
-                                   RoutePauseChance(dest));
+                                   RoutePauseChance(dest), handoff);
             }
         }
     }
@@ -551,8 +553,21 @@ bool NewRpgBaseAction::MoveRandomNear(float moveStep, MovementPriority priority,
     return false;
 }
 
+bool NewRpgBaseAction::RoadLegHandoff()
+{
+    if (!OnRoadRoute() || !bot->isMoving() || botAI->rpgInfo.pausePos != WorldPosition())
+        return false;
+    LastMovement& lastMove = AI_VALUE(LastMovement&, "last movement");
+    if (lastMove.lastMoveToMapId != bot->GetMapId())
+        return false;
+    float const remainingYards = bot->GetExactDist(lastMove.lastMoveToX, lastMove.lastMoveToY, lastMove.lastMoveToZ);
+    uint32 const end = lastMove.msTime + uint32(lastMove.lastdelayTime);
+    int32 const left = int32(end - getMSTime());
+    return HumanMovementRules::ShouldHandOffLeg(true, true, remainingYards, left > 0 ? uint32(left) : 0u);
+}
+
 bool NewRpgBaseAction::MoveHumanTo(uint32 mapId, float x, float y, float z, MovementPriority priority,
-                                   float pauseChance)
+                                   float pauseChance, bool handoff)
 {
     G3D::Vector3 dest(x, y, z);
     auto const stock = [&]() { return MoveTo(mapId, dest.x, dest.y, dest.z, false, false, false, true, priority); };
@@ -562,7 +577,7 @@ bool NewRpgBaseAction::MoveHumanTo(uint32 mapId, float x, float y, float z, Move
         return stock();
 
     UpdateMovementState();
-    if (!IsMovingAllowed() || IsDuplicateMove(x, y, z) || IsWaitingForLastMove(priority))
+    if (!IsMovingAllowed() || IsDuplicateMove(x, y, z) || (!handoff && IsWaitingForLastMove(priority)))
         return false;
     if (priority <= MovementPriority::MOVEMENT_NORMAL && IsBodyPullRisk(x, y, z))
         return false;
@@ -627,10 +642,10 @@ bool NewRpgBaseAction::MoveHumanTo(uint32 mapId, float x, float y, float z, Move
             }
             Movement::PointsArray const& points = *launch;
 
-            bot->GetMotionMaster()->Clear();
+            bot->GetMotionMaster()->Clear(!handoff);
             if (bot->IsSitState())
                 bot->SetStandState(UNIT_STAND_STATE_STAND);
-            if (!bot->IsStopped())
+            if (!handoff && !bot->IsStopped())
                 bot->StopMoving();
 
             Movement::MoveSplineInit init(bot);

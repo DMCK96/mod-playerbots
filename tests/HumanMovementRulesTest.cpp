@@ -336,3 +336,25 @@ TEST(HumanMovementRules, BotFarBelowTheTerrainWithNoMeshHasFallenThroughTheWorld
     EXPECT_FALSE(IsUnderWorld(43.2f - UnderWorldYards + 0.1f, 43.2f, false));
     EXPECT_TRUE(IsUnderWorld(43.2f - UnderWorldYards, 43.2f, false));
 }
+
+TEST(HumanMovementRules, HandsOffWithinTenYardsOrOneAndAHalfSeconds)
+{
+    EXPECT_TRUE(ShouldHandOffLeg(true, true, 10.0f, 4000));
+    EXPECT_TRUE(ShouldHandOffLeg(true, true, 4.0f, 3000));
+    EXPECT_TRUE(ShouldHandOffLeg(true, true, 30.0f, 1500));
+    EXPECT_FALSE(ShouldHandOffLeg(true, true, 10.1f, 1501));
+    EXPECT_FALSE(ShouldHandOffLeg(true, true, 24.0f, 3400));
+}
+
+TEST(HumanMovementRules, HandsOffOnTimeEvenFarFromTheEnd)
+{
+    EXPECT_TRUE(ShouldHandOffLeg(true, true, 21.0f, 1500));
+    EXPECT_TRUE(ShouldHandOffLeg(true, true, 21.0f, 0));
+}
+
+TEST(HumanMovementRules, NeverHandsOffOffTheRoadOrWhenStopped)
+{
+    EXPECT_FALSE(ShouldHandOffLeg(false, true, 2.0f, 200));
+    EXPECT_FALSE(ShouldHandOffLeg(true, false, 2.0f, 200));
+    EXPECT_FALSE(ShouldHandOffLeg(false, false, 2.0f, 200));
+}

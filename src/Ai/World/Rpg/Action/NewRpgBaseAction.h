@@ -40,7 +40,10 @@ protected:
     bool MoveRandomNear(float moveStep = 50.0f, MovementPriority priority = MovementPriority::MOVEMENT_NORMAL, WorldObject* center = nullptr);
     bool ForceToWait(uint32 duration, MovementPriority priority = MovementPriority::MOVEMENT_NORMAL);
     bool MoveHumanTo(uint32 mapId, float x, float y, float z,
-                     MovementPriority priority = MovementPriority::MOVEMENT_NORMAL, float pauseChance = 0.0f);
+                     MovementPriority priority = MovementPriority::MOVEMENT_NORMAL, float pauseChance = 0.0f,
+                     bool handoff = false);
+    // True while the bot walks a road leg with its end close enough that the next leg should be planned now.
+    bool RoadLegHandoff();
     // A point on the target's own floor with a complete path, for a path that ends a floor above or below it.
     bool ApproachOnFloor(G3D::Vector3 const& target, G3D::Vector3& way);
     HumanMovement::Straight StraightReason(G3D::Vector3 const& dest);
