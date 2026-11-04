@@ -101,6 +101,7 @@ struct NewRpgInfo
     uint32 stuckAttempts{0};
     WorldPosition moveFarPos;
     WorldPosition pausePos{};  // end of a leg cut short for a route pause
+    WorldPosition legTarget{};  // the road leg the bot was last sent to
     // Road waypoints planned for moveFarPos; `decided` keeps a trip from being planned twice.
     struct RoadRoute
     {

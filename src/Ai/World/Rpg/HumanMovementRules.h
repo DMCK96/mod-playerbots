@@ -228,6 +228,15 @@ inline size_t PauseCutIndex(size_t pointCount, float u)
     return std::min(pick, hi);
 }
 
+// A lane offset moves a point sideways along the bisector of its two segments; past this turn the legs of the
+// path would cross, so the point stays on the path.
+constexpr float MaxLaneTurnRadians = 1.309f;  // 75 degrees
+
+inline bool LaneAllowedAtTurn(float turnRadians)
+{
+    return turnRadians <= MaxLaneTurnRadians;
+}
+
 constexpr float RoadHandoffYards = 10.0f;
 constexpr uint32_t RoadHandoffMs = 1500;
 

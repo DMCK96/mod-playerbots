@@ -358,3 +358,11 @@ TEST(HumanMovementRules, NeverHandsOffOffTheRoadOrWhenStopped)
     EXPECT_FALSE(ShouldHandOffLeg(true, false, 2.0f, 200));
     EXPECT_FALSE(ShouldHandOffLeg(false, false, 2.0f, 200));
 }
+
+TEST(HumanMovementRules, TheLaneOffsetSkipsSharpTurns)
+{
+    EXPECT_TRUE(LaneAllowedAtTurn(0.0f));
+    EXPECT_TRUE(LaneAllowedAtTurn(1.2f));
+    EXPECT_FALSE(LaneAllowedAtTurn(1.4f));
+    EXPECT_FALSE(LaneAllowedAtTurn(3.0f));
+}

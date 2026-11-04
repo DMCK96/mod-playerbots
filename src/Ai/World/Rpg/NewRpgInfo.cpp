@@ -98,6 +98,7 @@ void NewRpgInfo::SetMoveFarTo(WorldPosition pos)
     stuckAttempts = 0;
     moveFarPos = pos;
     pausePos = WorldPosition();
+    legTarget = WorldPosition();
     road = RoadRoute{};
 }
 

@@ -30,7 +30,8 @@ using SegmentCheck = std::function<bool(Point const&, Point const&)>;
 struct Shaped
 {
     std::vector<Point> path;
-    size_t rounded = 0;  // corners replaced by an arc
+    std::vector<bool> synthesized;  // per path point: added by an arc, not taken from the input
+    size_t rounded = 0;             // corners replaced by an arc
     size_t sharp = 0;    // corners that qualified but no radius passed the check
 };
 
@@ -40,6 +41,12 @@ constexpr float MinRadiusYards = 1.5f;
 constexpr float MaxRadiusYards = 4.0f;
 constexpr float MaxTurnForTangent = 3.1f;  // tan(pi / 2) is huge, and negative in float, at a full reversal
 constexpr int RadiusAttempts = 3;          // radius, half, quarter
+// The client receives the inner points of a linear spline truncated to 0.25 yd, so an arc needs chords well above
+// that, and a corner that cannot give them stays sharp.
+constexpr float MinChordYards = 1.0f;
+constexpr float MinTangentYards = 1.0f;
+constexpr float MaxSnapYards = 0.1f;
+constexpr float MaxSnapHeightYards = 1.2f;
 
 inline float RadiusYards(uint32_t seed)
 {
@@ -85,14 +92,21 @@ inline size_t ArcPointCount(float turnRadians)
     return 5;
 }
 
+// A point the mesh query snapped to is the point itself, not a near neighbour: the ray is cast between snapped
+// points, so a point that snapped far would otherwise pass for walkable.
+inline bool SnapIsClose(Point const& wanted, Point const& snapped)
+{
+    return Length2d(wanted, snapped) <= MaxSnapYards && std::fabs(wanted.z - snapped.z) <= MaxSnapHeightYards;
+}
+
 inline Point Toward(Point const& from, Point const& to, float fraction)
 {
     return Point{from.x + (to.x - from.x) * fraction, from.y + (to.y - from.y) * fraction,
                  from.z + (to.z - from.z) * fraction};
 }
 
-// The corner as it replaces itself: entry point, arc points, exit point. A corner under MinTurnRadians (or with no
-// room for an arc) comes back alone.
+// The corner as it replaces itself: entry point, arc points, exit point. A corner under MinTurnRadians, or with no
+// room for an arc of chords above MinChordYards, comes back alone.
 inline std::vector<Point> RoundCorner(Point const& prev, Point const& corner, Point const& next, float radius)
 {
     float const turn = TurnRadians(prev, corner, next);
@@ -101,12 +115,13 @@ inline std::vector<Point> RoundCorner(Point const& prev, Point const& corner, Po
     float const inYards = Length2d(prev, corner);
     float const outYards = Length2d(corner, next);
     float const tangent = TangentYards(radius, turn, inYards, outYards);
-    if (tangent <= 0.0f)
+    if (tangent + 0.001f < MinTangentYards)
         return {corner};
 
     Point const entry = Toward(corner, prev, tangent / inYards);
     Point const exit = Toward(corner, next, tangent / outYards);
-    size_t const count = ArcPointCount(turn);
+    float const arcYards = (2.0f * tangent + Length2d(entry, exit)) * 0.5f;
+    size_t const count = size_t(std::clamp(int(arcYards / MinChordYards) - 1, 1, int(ArcPointCount(turn))));
 
     std::vector<Point> arc;
     arc.reserve(count + 2);
@@ -138,17 +153,20 @@ inline Shaped Shape(std::vector<Point> const& path, float radius, SegmentCheck c
     if (path.size() < 3)
     {
         shaped.path = path;
+        shaped.synthesized.assign(path.size(), false);
         return shaped;
     }
 
     shaped.path.reserve(path.size() * 3);
     shaped.path.push_back(path.front());
+    shaped.synthesized.push_back(false);
     for (size_t i = 1; i + 1 < path.size(); ++i)
     {
         Point const& corner = path[i];
         if (TurnRadians(path[i - 1], corner, path[i + 1]) < MinTurnRadians)
         {
             shaped.path.push_back(corner);
+            shaped.synthesized.push_back(false);
             continue;
         }
 
@@ -160,6 +178,7 @@ inline Shaped Shape(std::vector<Point> const& path, float radius, SegmentCheck c
             if (arc.size() > 1 && ArcIsClear(arc, check))
             {
                 shaped.path.insert(shaped.path.end(), arc.begin(), arc.end());
+                shaped.synthesized.insert(shaped.synthesized.end(), arc.size(), true);
                 rounded = true;
             }
         }
@@ -170,10 +189,12 @@ inline Shaped Shape(std::vector<Point> const& path, float radius, SegmentCheck c
         else
         {
             shaped.path.push_back(corner);
+            shaped.synthesized.push_back(false);
             ++shaped.sharp;
         }
     }
     shaped.path.push_back(path.back());
+    shaped.synthesized.push_back(false);
     return shaped;
 }
 }  // namespace CornerRoundingRules

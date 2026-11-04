@@ -40,17 +40,13 @@ G3D::Vector3 ToVector(Point const& p)
     return G3D::Vector3(p.x, p.y, p.z);
 }
 
-void SettleOnMesh(Map* map, std::vector<Point> const& original, std::vector<Point>& shaped)
+void SettleOnMesh(Map* map, CornerRoundingRules::Shaped& shaped)
 {
-    size_t next = 0;
-    for (size_t i = 1; i + 1 < shaped.size(); ++i)
+    for (size_t i = 0; i < shaped.path.size(); ++i)
     {
-        Point& p = shaped[i];
-        if (next < original.size() && p.x == original[next].x && p.y == original[next].y && p.z == original[next].z)
-        {
-            ++next;
+        if (!shaped.synthesized[i])
             continue;
-        }
+        Point& p = shaped.path[i];
         G3D::Vector3 onMesh;
         if (HumanMovement::NearestMeshPoint(map, p.x, p.y, p.z, MeshSnapHorizontal, MeshSnapVertical, onMesh) &&
             std::fabs(onMesh.z - p.z) <= MaxArcHeightError)
@@ -79,7 +75,7 @@ void ShapeBotPath(Unit* unit, Movement::PointsArray& path)
     if (!shaped.rounded)
         return;
 
-    SettleOnMesh(map, original, shaped.path);
+    SettleOnMesh(map, shaped);
     path.clear();
     path.reserve(shaped.path.size());
     for (Point const& p : shaped.path)

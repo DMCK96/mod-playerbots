@@ -118,11 +118,11 @@ TEST(CornerRounding, AGentleTurnIsNotRounded)
     EXPECT_EQ(out[0].y, 0.0f);
 }
 
-TEST(CornerRounding, ASixtyDegreeCornerBecomesEntryFourArcPointsAndExit)
+TEST(CornerRounding, ASixtyDegreeCornerBecomesEntryOneArcPointAndExit)
 {
     Point const corner = P(10, 0);
     auto const out = RoundCorner(P(0, 0), corner, P(15, 8.660254f), 2.0f);
-    ASSERT_EQ(out.size(), 6u);
+    ASSERT_EQ(out.size(), 3u);
     EXPECT_NEAR(out.front().x, 8.8453f, 1e-3f);
     EXPECT_NEAR(out.front().y, 0.0f, 1e-3f);
     EXPECT_NEAR(out.back().x, 10.5774f, 1e-3f);
@@ -132,14 +132,33 @@ TEST(CornerRounding, ASixtyDegreeCornerBecomesEntryFourArcPointsAndExit)
         EXPECT_LT(Dist(out[i], corner), 1.1547f);
         EXPECT_GT(Dist(out[i], corner), 0.01f);
     }
-    EXPECT_LT(MaxTurn(out), 0.3f);
+    EXPECT_LT(MaxTurn(out), 0.6f);
+}
+
+TEST(CornerRounding, ArcChordsStayAboveTheClientPacketGrid)
+{
+    Point const corner = P(10, 0);
+    auto const out = RoundCorner(P(0, 0), corner, P(15, 8.660254f), 4.0f);
+    ASSERT_GE(out.size(), 4u);
+    for (size_t i = 1; i < out.size(); ++i)
+        EXPECT_GE(Dist(out[i - 1], out[i]), 0.9f);
+}
+
+TEST(CornerRounding, ATinyTangentLeavesTheCornerSharp)
+{
+    std::vector<Point> const path = {P(0, 0), P(20, 0), P(30, 17.320508f)};
+    EXPECT_EQ(RoundCorner(path[0], path[1], path[2], 0.5f).size(), 1u);
+    Shaped const shaped = Shape(path, 0.5f, AlwaysClear);
+    EXPECT_TRUE(Same(shaped.path, path));
+    EXPECT_EQ(shaped.rounded, 0u);
+    EXPECT_EQ(shaped.sharp, 1u);
 }
 
 TEST(CornerRounding, HairpinStaysFiniteAndInsideTheSegments)
 {
     Point const corner = P(10, 0);
     auto const out = RoundCorner(P(0, 0), corner, P(0, 0.5f), 2.0f);
-    ASSERT_EQ(out.size(), 7u);
+    ASSERT_EQ(out.size(), 5u);
     ASSERT_TRUE(Finite(out));
     EXPECT_NEAR(Dist(out.front(), corner), 4.5f, 0.05f);
     for (Point const& p : out)
@@ -175,7 +194,7 @@ TEST(CornerRounding, ShapeKeepsFirstAndLastPointsAndCountsTheCorner)
 {
     std::vector<Point> const path = {P(0, 0, 1), P(20, 0, 3), P(30, 17.320508f, 6)};
     Shaped const shaped = Shape(path, 2.0f, AlwaysClear);
-    ASSERT_EQ(shaped.path.size(), 8u);
+    ASSERT_EQ(shaped.path.size(), 5u);
     EXPECT_EQ(shaped.path.front().x, 0.0f);
     EXPECT_EQ(shaped.path.front().z, 1.0f);
     EXPECT_EQ(shaped.path.back().x, 30.0f);
@@ -201,14 +220,38 @@ TEST(CornerRounding, RejectingEveryChordKeepsThePathSharp)
 TEST(CornerRounding, RadiusHalvesBeforeGivingUp)
 {
     Point const corner = P(20, 0);
-    std::vector<Point> const path = {P(0, 0), corner, P(30, 17.320508f)};
+    std::vector<Point> const path = {P(0, 0), corner, P(20, 20)};
     SegmentCheck const nearCorner = [corner](Point const& a, Point const& b)
-    { return Dist(a, corner) <= 0.6f && Dist(b, corner) <= 0.6f; };
-    Shaped const shaped = Shape(path, 2.0f, nearCorner);
+    { return Dist(a, corner) <= 1.1f && Dist(b, corner) <= 1.1f; };
+    Shaped const shaped = Shape(path, 4.0f, nearCorner);
     ASSERT_GT(shaped.path.size(), path.size());
     EXPECT_EQ(shaped.rounded, 1u);
     EXPECT_EQ(shaped.sharp, 0u);
-    EXPECT_NEAR(Dist(shaped.path[1], corner), 0.5774f, 2e-3f);
+    EXPECT_NEAR(Dist(shaped.path[1], corner), 1.0f, 2e-3f);
+}
+
+TEST(CornerRounding, ShapeMarksTheControlPointsItAdded)
+{
+    std::vector<Point> const path = {P(0, 0), P(10, 0), P(20, 0), P(30, 17.320508f)};
+    Shaped const shaped = Shape(path, 2.0f, AlwaysClear);
+    ASSERT_EQ(shaped.path.size(), 6u);
+    ASSERT_EQ(shaped.synthesized.size(), shaped.path.size());
+    EXPECT_FALSE(shaped.synthesized[0]);
+    EXPECT_FALSE(shaped.synthesized[1]);
+    EXPECT_EQ(shaped.path[1].x, 10.0f);
+    EXPECT_TRUE(shaped.synthesized[2]);
+    EXPECT_TRUE(shaped.synthesized[3]);
+    EXPECT_TRUE(shaped.synthesized[4]);
+    EXPECT_FALSE(shaped.synthesized[5]);
+}
+
+TEST(CornerRounding, ASnapMustLieOnTheMeshNotJustNearIt)
+{
+    EXPECT_TRUE(SnapIsClose(P(5, 5, 3), P(5, 5, 3)));
+    EXPECT_TRUE(SnapIsClose(P(5, 5, 3), P(5.05f, 5.0f, 3.0f)));
+    EXPECT_TRUE(SnapIsClose(P(5, 5, 3), P(5, 5, 4.0f)));
+    EXPECT_FALSE(SnapIsClose(P(5, 5, 3), P(5.5f, 5.0f, 3.0f)));
+    EXPECT_FALSE(SnapIsClose(P(5, 5, 3), P(5, 5, 4.5f)));
 }
 
 TEST(CornerRounding, AdjacentCornersOnShortSegmentsDoNotOverlap)
@@ -217,7 +260,7 @@ TEST(CornerRounding, AdjacentCornersOnShortSegmentsDoNotOverlap)
     Shaped const shaped = Shape(path, 4.0f, AlwaysClear);
     EXPECT_EQ(shaped.rounded, 2u);
     EXPECT_TRUE(Finite(shaped.path));
-    EXPECT_LT(MaxTurn(shaped.path), 0.6f);
+    EXPECT_LT(MaxTurn(shaped.path), 0.7f);
     EXPECT_LT(Length(shaped.path), Length(path));
     EXPECT_GT(Length(shaped.path), 0.8f * Length(path));
 }

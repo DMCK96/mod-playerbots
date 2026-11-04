@@ -52,6 +52,11 @@
 #include <memory>
 #include <unordered_set>
 
+namespace
+{
+constexpr float SameLegTargetYards = 1.0f;
+}  // namespace
+
 bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
 {
     if (dest == WorldPosition())
@@ -112,6 +117,14 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
     PlanRoadRoute(dest);
     WorldPosition const target = RoadLegTarget(dest);
     bool const onRoad = OnRoadRoute();
+
+    // A sharp bend keeps the same leg target until the bot is close to it: do not relaunch toward it every tick.
+    WorldPosition const& launched = botAI->rpgInfo.legTarget;
+    if (handoff && target.GetExactDist(launched.GetPositionX(), launched.GetPositionY(), launched.GetPositionZ()) <
+                       SameLegTargetYards)
+        return true;
+    if (onRoad)
+        botAI->rpgInfo.legTarget = target;
 
     // stuck check, against the current road waypoint while on a road route
     float disToDest = bot->GetDistance(target);
@@ -582,15 +595,17 @@ bool NewRpgBaseAction::MoveRandomNear(float moveStep, MovementPriority priority,
 
 bool NewRpgBaseAction::RoadLegHandoff()
 {
-    if (!OnRoadRoute() || !bot->isMoving() || botAI->rpgInfo.pausePos != WorldPosition())
+    if (!OnRoadRoute() || botAI->rpgInfo.pausePos != WorldPosition())
         return false;
-    LastMovement& lastMove = AI_VALUE(LastMovement&, "last movement");
-    if (lastMove.lastMoveToMapId != bot->GetMapId())
+    Movement::MoveSpline const& spline = *bot->movespline;
+    if (spline.Finalized() || !bot->isMoving())
         return false;
-    float const remainingYards = bot->GetExactDist(lastMove.lastMoveToX, lastMove.lastMoveToY, lastMove.lastMoveToZ);
-    uint32 const end = lastMove.msTime + uint32(lastMove.lastdelayTime);
-    int32 const left = int32(end - getMSTime());
-    return HumanMovementRules::ShouldHandOffLeg(true, true, remainingYards, left > 0 ? uint32(left) : 0u);
+    if (AI_VALUE(LastMovement&, "last movement").priority > MovementPriority::MOVEMENT_NORMAL)
+        return false;
+    G3D::Vector3 const end = spline.FinalDestination();
+    int32 const left = spline.timeElapsed();
+    return HumanMovementRules::ShouldHandOffLeg(true, true, bot->GetExactDist(end.x, end.y, end.z),
+                                                left > 0 ? uint32(left) : 0u);
 }
 
 bool NewRpgBaseAction::MoveHumanTo(uint32 mapId, float x, float y, float z, MovementPriority priority,

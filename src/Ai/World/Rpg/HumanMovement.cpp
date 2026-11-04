@@ -5,6 +5,7 @@
  */
 
 #include "HumanMovement.h"
+#include "CornerRoundingRules.h"
 
 #include "CellImpl.h"
 #include "Creature.h"
@@ -52,7 +53,6 @@ constexpr float LiveRadiusNpc = 6.0f;
 constexpr float LiveRadiusPlace = 20.0f;
 constexpr float LiveScanMaxDistance = 300.0f;
 constexpr size_t MinCurvePoints = 5;
-constexpr float MaxChordHeightError = 1.2f;
 constexpr int ChordPolyCap = 16;
 constexpr float LaneTaperYards = 8.0f;
 constexpr float SpotMeshHorizontal = 1.5f;
@@ -683,6 +683,11 @@ bool Humanize(Player* bot, Movement::PointsArray const& in, Movement::PointsArra
     {
         if (weights[i] <= 0.0f)
             continue;
+        CornerRoundingRules::Point const before{in[i - 1].x, in[i - 1].y, in[i - 1].z};
+        CornerRoundingRules::Point const at{in[i].x, in[i].y, in[i].z};
+        CornerRoundingRules::Point const after{in[i + 1].x, in[i + 1].y, in[i + 1].z};
+        if (!HumanMovementRules::LaneAllowedAtTurn(CornerRoundingRules::TurnRadians(before, at, after)))
+            continue;
         G3D::Vector2 dir(in[i + 1].x - in[i - 1].x, in[i + 1].y - in[i - 1].y);
         float const length = dir.length();
         if (length < 0.01f)
@@ -732,7 +737,9 @@ bool MeshChordClear(Map* map, G3D::Vector3 const& from, G3D::Vector3 const& to)
     if (dtStatusFailed(query->findNearestPoly(start, extents, &BotMeshFilter(), &startRef, startOn)) || !startRef ||
         dtStatusFailed(query->findNearestPoly(end, extents, &BotMeshFilter(), &endRef, endOn)) || !endRef)
         return false;
-    if (std::fabs(startOn[1] - from.z) > MaxChordHeightError || std::fabs(endOn[1] - to.z) > MaxChordHeightError)
+    using CornerRoundingRules::Point;
+    if (!CornerRoundingRules::SnapIsClose(Point{from.x, from.y, from.z}, Point{startOn[2], startOn[0], startOn[1]}) ||
+        !CornerRoundingRules::SnapIsClose(Point{to.x, to.y, to.z}, Point{endOn[2], endOn[0], endOn[1]}))
         return false;
     float t = 0.0f;
     float hitNormal[3] = {0.0f, 0.0f, 0.0f};
