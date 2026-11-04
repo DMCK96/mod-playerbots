@@ -304,6 +304,20 @@ bool NewRpgBaseAction::OnRoadRoute() const
     return road.next < road.points.size();
 }
 
+namespace
+{
+constexpr float RoadProbeRiseYards = 3.0f;
+constexpr float RoadProbeWalkYards = 60.0f;
+}  // namespace
+
+// Whether the navmesh joins two points by a walk of at most `yards`.
+bool NewRpgBaseAction::ReachedWithin(G3D::Vector3 const& from, G3D::Vector3 const& to, float yards)
+{
+    PathGenerator path(bot);
+    path.CalculatePath(from.x, from.y, from.z, to.x, to.y, to.z, false);
+    return path.GetPathType() == PATHFIND_NORMAL && path.getPathLength() <= yards;
+}
+
 WorldPosition NewRpgBaseAction::RoadLegTarget(WorldPosition const& dest)
 {
     NewRpgInfo& info = botAI->rpgInfo;
@@ -357,9 +371,22 @@ WorldPosition NewRpgBaseAction::RoadLegTarget(WorldPosition const& dest)
         z = ground;
     // Road nodes carry the terrain height, which is wrong on bridges and in towns: aim at the navmesh there. A probed
     // surface with no walkable floor near it (the roof of a building over the road) is not the road: keep the node's own.
+    // So is one that a short walk from the node's own floor does not reach (a stack of props, a walkway over the street).
+    Map* const map = bot->GetMap();
     G3D::Vector3 onMesh;
-    if (HumanMovement::NearestMeshPoint(bot->GetMap(), x, y, z, 4.0f, 6.0f, onMesh) ||
-        (z != nodeZ && HumanMovement::NearestMeshPoint(bot->GetMap(), x, y, nodeZ, 4.0f, 6.0f, onMesh)))
+    bool snapped = HumanMovement::NearestMeshPoint(map, x, y, z, 4.0f, 6.0f, onMesh);
+    if (z != nodeZ)
+    {
+        G3D::Vector3 ownMesh;
+        bool const ownOnMesh = HumanMovement::NearestMeshPoint(map, x, y, nodeZ, 4.0f, 6.0f, ownMesh);
+        if (ownOnMesh && (!snapped || (std::fabs(onMesh.z - ownMesh.z) > RoadProbeRiseYards &&
+                                       !ReachedWithin(ownMesh, onMesh, RoadProbeWalkYards))))
+        {
+            onMesh = ownMesh;
+            snapped = true;
+        }
+    }
+    if (snapped)
     {
         x = onMesh.x;
         y = onMesh.y;
@@ -635,7 +662,6 @@ bool NewRpgBaseAction::MoveHumanTo(uint32 mapId, float x, float y, float z, Move
                 {
                     shortened.assign(launch->begin(), launch->begin() + cut + 1);
                     launch = &shortened;
-                    smooth = smooth && shortened.size() >= 5;
                     G3D::Vector3 const& stop = shortened.back();
                     botAI->rpgInfo.pausePos = WorldPosition(mapId, stop.x, stop.y, stop.z);
                 }
@@ -650,8 +676,6 @@ bool NewRpgBaseAction::MoveHumanTo(uint32 mapId, float x, float y, float z, Move
 
             Movement::MoveSplineInit init(bot);
             init.MovebyPath(points);
-            if (smooth)
-                init.SetSmooth();
             if (sPlayerbotAIConfig.coaPolish && gen.getPathLength() < 20.0f && HumanMovement::Chance(40))
                 init.SetWalk(true);
             int32 const duration = init.Launch();
