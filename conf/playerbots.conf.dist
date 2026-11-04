@@ -1762,6 +1762,13 @@ AiPlayerbot.CoaRoadShare = 100
 # Default: 25
 AiPlayerbot.CoaRoadMinTrip = 25
 
+# A bot stuck 15 or more yards below the terrain (the Undercity, caves and mines) with no way on walks the underground graph
+# to the listed exit that leaves the least to go before it is teleported. Needs DataDir/roads/<map>.under and <map>.exits, made
+# with modules/mod-playerbots/tools/roads/build_underground.py (see its README); without them this does nothing.
+# 0 = bots are only teleported.
+# Default: 1
+AiPlayerbot.CoaUndergroundExit = 1
+
 # Seconds between "coa movement" summary lines in the server log (spots picked, overlap, lane
 # launches, dwell, time spent) and "coa pathing" lines (moves that fell back to a straight line and
 # why, destinations moved onto the navmesh, paths ending a floor away from their target, stuck

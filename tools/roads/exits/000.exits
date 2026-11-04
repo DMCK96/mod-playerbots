@@ -1,0 +1,4 @@
+# Exit points of underground areas on map 0 (Eastern Kingdoms), one `x y z` a line.
+# Where a bot stuck below the terrain leaves it: the floor where the mesh reaches the surface.
+# Undercity: the north ramp up to the Ruins of Lordaeron.
+1653.5 725.1 80.6

@@ -12,8 +12,12 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <functional>
+#include <limits>
 #include <optional>
 #include <queue>
+#include <sstream>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -89,6 +93,38 @@ struct RoadPlan
 inline float Distance2d(float ax, float ay, float bx, float by)
 {
     return std::hypot(ax - bx, ay - by);
+}
+
+constexpr float UndergroundEntrySlackYards = 6.0f;
+
+inline float Distance3d(float ax, float ay, float az, float bx, float by, float bz)
+{
+    return std::sqrt((ax - bx) * (ax - bx) + (ay - by) * (ay - by) + (az - bz) * (az - bz));
+}
+
+// The way out of an underground area: road nodes to walk in order, and how far.
+struct UndergroundPlan
+{
+    std::vector<uint32_t> nodes;
+    float walkYards = 0.0f;
+};
+
+// Points of an exit list: one "x y z" a line, '#' starts a comment; a line that is not three numbers is skipped.
+inline std::vector<Point> ParseExitList(std::string const& text)
+{
+    std::vector<Point> points;
+    std::istringstream lines(text);
+    std::string line;
+    while (std::getline(lines, line))
+    {
+        line = line.substr(0, line.find('#'));
+        std::istringstream fields(line);
+        Point point{};
+        std::string extra;
+        if ((fields >> point.x >> point.y >> point.z) && !(fields >> extra))
+            points.push_back(point);
+    }
+    return points;
 }
 
 class RoadGraph
@@ -178,6 +214,103 @@ public:
         for (auto const& entry : found)
             ids.push_back(entry.second);
         return ids;
+    }
+
+    // Nodes within `radius` yards of the point in three dimensions, nearest first.
+    std::vector<uint32_t> Nearest3d(Point at, float radius, size_t max) const
+    {
+        std::vector<std::pair<float, uint32_t>> found;
+        for (int32_t cx = CellOf(at.x - radius); cx <= CellOf(at.x + radius); ++cx)
+        {
+            for (int32_t cy = CellOf(at.y - radius); cy <= CellOf(at.y + radius); ++cy)
+            {
+                auto const cell = grid.find(CellKey(cx, cy));
+                if (cell == grid.end())
+                    continue;
+                for (uint32_t id : cell->second)
+                {
+                    float const d = Distance3d(at.x, at.y, at.z, nodes[id].x, nodes[id].y, nodes[id].z);
+                    if (d <= radius)
+                        found.emplace_back(d, id);
+                }
+            }
+        }
+        std::sort(found.begin(), found.end());
+        if (found.size() > max)
+            found.resize(max);
+        std::vector<uint32_t> ids;
+        ids.reserve(found.size());
+        for (auto const& entry : found)
+            ids.push_back(entry.second);
+        return ids;
+    }
+
+    // The walk from near `from` to the exit that leaves the least to go: the way to the exit over the graph plus the
+    // straight line from it to `to`. Empty when no node is within `entryRadius` or no exit can be reached.
+    UndergroundPlan PlanToExit(Point from, Point to, std::vector<uint32_t> const& exits, float entryRadius) const
+    {
+        UndergroundPlan plan;
+        if (exits.empty())
+            return plan;
+        using Entry = std::pair<float, uint32_t>;
+        std::priority_queue<Entry, std::vector<Entry>, std::greater<Entry>> open;
+        std::unordered_map<uint32_t, float> cost;
+        std::unordered_map<uint32_t, uint32_t> parent;
+        constexpr uint32_t none = std::numeric_limits<uint32_t>::max();
+        // The bot is at its nearest node, not at one a wall away: only nodes about as near as it are entered directly.
+        float nearest = -1.0f;
+        for (uint32_t id : Nearest3d(from, entryRadius, 4))
+        {
+            float const g = Distance3d(from.x, from.y, from.z, nodes[id].x, nodes[id].y, nodes[id].z);
+            if (nearest < 0.0f)
+                nearest = g;
+            else if (g > nearest + UndergroundEntrySlackYards)
+                break;
+            cost[id] = g;
+            parent[id] = none;
+            open.emplace(g, id);
+        }
+        while (!open.empty())
+        {
+            auto const [g, id] = open.top();
+            open.pop();
+            if (g > cost[id])
+                continue;
+            for (auto const& [neighbour, edge] : adjacency[id])
+            {
+                float const next =
+                    g + Distance3d(nodes[id].x, nodes[id].y, nodes[id].z, nodes[neighbour].x, nodes[neighbour].y,
+                                   nodes[neighbour].z);
+                auto const known = cost.find(neighbour);
+                if (known == cost.end() || next < known->second)
+                {
+                    cost[neighbour] = next;
+                    parent[neighbour] = id;
+                    open.emplace(next, neighbour);
+                }
+            }
+        }
+        uint32_t best = none;
+        float bestTotal = 0.0f;
+        for (uint32_t id : exits)
+        {
+            auto const reached = cost.find(id);
+            if (reached == cost.end())
+                continue;
+            float const total = reached->second + Distance2d(nodes[id].x, nodes[id].y, to.x, to.y);
+            if (best == none || total < bestTotal)
+            {
+                best = id;
+                bestTotal = total;
+            }
+        }
+        if (best == none)
+            return plan;
+        plan.walkYards = cost[best];
+        for (uint32_t id = best; id != none && plan.nodes.size() <= nodes.size(); id = parent[id])
+            plan.nodes.push_back(id);
+        std::reverse(plan.nodes.begin(), plan.nodes.end());
+        return plan;
     }
 
     // Cheapest way to join a road near `from` (only at a node closer to `to` than `from` is, give or take a quarter of the way to the road) and ride it as far as it pays, then leave it for `to`: every road

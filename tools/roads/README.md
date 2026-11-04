@@ -73,6 +73,30 @@ Restart the worldserver after rebuilding; graphs are cached per map once loaded.
   with the navmesh, and give up the road for that trip when a leg cannot be walked.
 - **Thresholds:** they were tuned on a few Elwynn Forest and Barrens tiles. Use the previews to check other zones.
 
+## Underground graphs
+
+A bot stuck far below the terrain (the Undercity, caves, mines) has no road to follow, and the navmesh's partial path to a far goal
+ends at the underground polygon nearest it, a dead end. `build_underground.py` writes a graph of the covered navmesh for such an area, and
+the server walks it to an exit before it would teleport the bot (`AiPlayerbot.CoaUndergroundExit`).
+
+```
+python -I tools/roads/build_underground.py <DataDir> <map id> <gx0,gx1> <gy0,gy1> <exits file> <DataDir>/roads/<map id>.under
+python -I tools/roads/build_underground.py <DataDir> <map id> <gx0,gx1> <gy0,gy1> /dev/null /dev/null --candidates
+```
+
+- `<gx0,gx1>` and `<gy0,gy1>` are the `mmtile` file numbers (`<map><gx><gy>.mmtile`) of a rectangle holding the whole underground area;
+  the Undercity is `0 28,30 29,32`. Needs `mmaps/` and `maps/` under `<DataDir>`.
+- **Nodes:** navmesh polygons whose floor is 4 or more yards under the terrain, one node per connected group in each 16 x 16 x 6 yard
+  cell, joined where their polygons touch. Written in the road file format (z is the floor).
+- **Exits:** `<exits file>` lists the points where the mesh reaches the surface, one `x y z` a line (`#` comments); each becomes a node
+  joined to the polygons beside it. Copy the same file to `<DataDir>/roads/<map id>.exits`. `exits/000.exits` lists the Undercity's.
+  `--candidates` prints the deep underground regions and the surface polygons next to them, to choose exit points from.
+- **The summary** lists the groups of nodes that no exit reaches (floors fed only by lifts or other transports, which the mesh cannot
+  contain); a bot in one of them is teleported as before.
+- **On the server:** a bot stuck 15 or more yards below the terrain, twice at most per trip, plans over the graph from the nodes
+  within 40 yards of it to the exit that leaves the least to go (the walk plus the straight line to its goal), walks it with the
+  road-leg code, and plans its trip again from the exit. It writes a `coa underground` line to the log.
+
 ## Tests
 
 ```

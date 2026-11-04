@@ -793,6 +793,7 @@ bool PlayerbotAIConfig::Initialize()
     coaTargetSpread = sConfigMgr->GetOption<bool>("AiPlayerbot.CoaTargetSpread", true, false);
     coaRoutePauseYards = sConfigMgr->GetOption<uint32>("AiPlayerbot.CoaRoutePauseYards", 400, false);
     coaRoadShare = sConfigMgr->GetOption<uint32>("AiPlayerbot.CoaRoadShare", 100, false);
+    coaUndergroundExit = sConfigMgr->GetOption<bool>("AiPlayerbot.CoaUndergroundExit", true, false);
     coaRoadMinTrip = sConfigMgr->GetOption<float>("AiPlayerbot.CoaRoadMinTrip", 25.0f, false);
     coaBodyPullGuard = sConfigMgr->GetOption<bool>("AiPlayerbot.CoaBodyPullGuard", true, false);
     coaKeepTargetOutOfSight = sConfigMgr->GetOption<bool>("AiPlayerbot.CoaKeepTargetOutOfSight", true, false);

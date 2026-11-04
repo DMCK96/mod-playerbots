@@ -111,6 +111,7 @@ struct NewRpgInfo
         size_t leg{0};   // waypoint the current leg aims at
         uint32 mapId{0};
         bool decided{false};
+        bool underground{false};  // the nodes lead out of an underground area, not along a surface road
     };
     RoadRoute road;
     // Last target whose floor could not be reached, so the search is not repeated every tick.
@@ -119,6 +120,7 @@ struct NewRpgInfo
     // The target this bot keeps failing to reach; the status is dropped once it fails often enough.
     HumanMovementRules::UnreachableTarget unreachable{};
     HumanMovementRules::AvoidedTargets avoided{};
+    uint32 undergroundTries{0};  // underground routes planned for this destination
     // END MOVE_FAR
 
     using RpgData = std::variant<

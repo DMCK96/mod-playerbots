@@ -59,6 +59,7 @@ protected:
     void LogNavEvent(char const* kind, G3D::Vector3 const& from, G3D::Vector3 const& to, char const* why);
     std::string DescribeNavTarget();
     bool RescueFromUnderWorld(WorldPosition const& dest);
+    bool TryUndergroundExit(WorldPosition const& dest);
     bool ReachedWithin(G3D::Vector3 const& from, G3D::Vector3 const& to, float yards);
     void StandCues(WorldObject* facing = nullptr);
 

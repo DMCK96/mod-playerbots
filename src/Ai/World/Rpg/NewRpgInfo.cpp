@@ -89,6 +89,7 @@ void NewRpgInfo::Reset()
     startT = getMSTime();
     recentTargets.Clear();
     road = RoadRoute{};
+    undergroundTries = 0;
 }
 
 void NewRpgInfo::SetMoveFarTo(WorldPosition pos)

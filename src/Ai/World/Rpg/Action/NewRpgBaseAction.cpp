@@ -152,6 +152,9 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
             AbandonRoadRoute();
             return MoveFarTo(dest);
         }
+        // Below the terrain, the exit nearest the goal is walked first; the teleport is for what that cannot help.
+        if (TryUndergroundExit(dest))
+            return MoveFarTo(dest);
         AreaTableEntry const* entry = sAreaTableStore.LookupEntry(bot->GetZoneId());
         std::string zone_name = PlayerbotAI::GetLocalizedAreaName(entry);
         LOG_DEBUG(
@@ -270,6 +273,8 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
 void NewRpgBaseAction::PlanRoadRoute(WorldPosition const& dest)
 {
     NewRpgInfo::RoadRoute& road = botAI->rpgInfo.road;
+    if (road.underground && road.next >= road.points.size())
+        road = NewRpgInfo::RoadRoute{};
     if (road.decided && road.mapId != bot->GetMapId())
         road = NewRpgInfo::RoadRoute{};
     if (road.decided)
@@ -377,9 +382,13 @@ WorldPosition NewRpgBaseAction::RoadLegTarget(WorldPosition const& dest)
     float y = node.GetPositionY();
     float z = node.GetPositionZ();
     float const nodeZ = z;
-    float ground = bot->GetMap()->GetHeight(bot->GetPhaseMask(), x, y, z + 10.0f, true, 50.0f);
-    if (ground <= INVALID_HEIGHT)
-        ground = bot->GetMap()->GetHeight(bot->GetPhaseMask(), x, y, bot->GetPositionZ() + 100.0f, true, 400.0f);
+    float ground = INVALID_HEIGHT;
+    if (!road.underground)
+    {
+        ground = bot->GetMap()->GetHeight(bot->GetPhaseMask(), x, y, z + 10.0f, true, 50.0f);
+        if (ground <= INVALID_HEIGHT)
+            ground = bot->GetMap()->GetHeight(bot->GetPhaseMask(), x, y, bot->GetPositionZ() + 100.0f, true, 400.0f);
+    }
     if (ground > INVALID_HEIGHT)
         z = ground;
     // Road nodes carry the terrain height, which is wrong on bridges and in towns: aim at the navmesh there. A probed
@@ -467,6 +476,7 @@ void NewRpgBaseAction::AbandonRoadRoute()
     road.nodes.clear();
     road.next = 0;
     road.leg = 0;
+    road.underground = false;
     info.nearestMoveFarDis = FLT_MAX;
     info.stuckTs = getMSTime();
     info.stuckAttempts = 0;
@@ -766,6 +776,54 @@ bool NewRpgBaseAction::RescueFromUnderWorld(WorldPosition const& dest)
     LogNavEvent("teleport", here, to, "under_world");
     bot->RemoveAurasWithInterruptFlags(AURA_INTERRUPT_FLAG_TELEPORTED | AURA_INTERRUPT_FLAG_CHANGE_MAP);
     return bot->TeleportTo(bot->GetMapId(), to.x, to.y, to.z, bot->GetOrientation());
+}
+
+namespace
+{
+constexpr uint32 UndergroundTriesPerTrip = 2;
+constexpr float UndergroundEntryYards = 40.0f;
+}  // namespace
+
+// A bot stuck below the terrain walks the underground graph to the exit that leaves the least to go, then carries on from there.
+// False when the bot is not underground, its map has no graph, no node is near it or no listed exit can be reached.
+bool NewRpgBaseAction::TryUndergroundExit(WorldPosition const& dest)
+{
+    NewRpgInfo& info = botAI->rpgInfo;
+    if (!sPlayerbotAIConfig.coaUndergroundExit || info.undergroundTries >= UndergroundTriesPerTrip ||
+        dest.GetMapId() != bot->GetMapId() || bot->IsFlying() || bot->isSwimming() || bot->GetVehicle())
+        return false;
+    float const x = bot->GetPositionX();
+    float const y = bot->GetPositionY();
+    float const z = bot->GetPositionZ();
+    float const terrain = bot->GetMap()->GetHeight(x, y, MAX_HEIGHT, false);
+    if (terrain <= INVALID_HEIGHT || terrain - z < HumanMovementRules::UnderWorldYards)
+        return false;
+    std::shared_ptr<HumanMovement::UndergroundData const> const data = HumanMovement::UndergroundFor(bot->GetMapId());
+    if (!data)
+        return false;
+    RoadRules::UndergroundPlan const plan =
+        data->graph.PlanToExit({x, y, z}, {dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ()}, data->exits,
+                               UndergroundEntryYards);
+    if (plan.nodes.empty())
+        return false;
+
+    ++info.undergroundTries;
+    NewRpgInfo::RoadRoute& road = info.road;
+    road = NewRpgInfo::RoadRoute{};
+    road.decided = true;
+    road.underground = true;
+    road.mapId = bot->GetMapId();
+    for (uint32_t id : plan.nodes)
+    {
+        RoadRules::RoadNode const& node = data->graph.Node(id);
+        road.points.emplace_back(bot->GetMapId(), node.x, node.y, node.z);
+    }
+    info.nearestMoveFarDis = FLT_MAX;
+    RoadRules::RoadNode const& exit = data->graph.Node(plan.nodes.back());
+    LOG_INFO("playerbots",
+             "coa underground bot={} map={} from={:.1f},{:.1f},{:.1f} exit={:.1f},{:.1f},{:.1f} walk={:.0f} nodes={}",
+             bot->GetName(), bot->GetMapId(), x, y, z, exit.x, exit.y, exit.z, plan.walkYards, plan.nodes.size());
+    return true;
 }
 
 // One line per navigation failure for the nav collector, capped by AiPlayerbot.CoaNavEventsPerMinute (read on each

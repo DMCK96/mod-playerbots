@@ -304,3 +304,51 @@ TEST(RoadRules, BlocklistExpires)
     EXPECT_EQ(live.count(5), 0u);
     EXPECT_EQ(live.count(7), 1u);
 }
+
+TEST(UndergroundPlan, ExitListIgnoresCommentsAndLinesThatAreNotThreeNumbers)
+{
+    std::vector<Point> const points =
+        ParseExitList("# Undercity\n\n1653.5 725.1 80.6  # north ramp\n1 2\n7 8 9 10\n -4 5.5 6\n");
+    ASSERT_EQ(points.size(), 2u);
+    EXPECT_FLOAT_EQ(points[0].x, 1653.5f);
+    EXPECT_FLOAT_EQ(points[0].z, 80.6f);
+    EXPECT_FLOAT_EQ(points[1].x, -4.0f);
+}
+
+TEST(UndergroundPlan, NearestIn3dSeparatesFloorsOnTheSameSpot)
+{
+    std::vector<RoadNode> const nodes = {{0, 0, -60}, {0, 0, 80}};
+    std::vector<uint8_t> const bytes = Encode(nodes, {{0, 1, 1}});
+    std::optional<RoadGraph> const graph = RoadGraph::Parse(bytes.data(), bytes.size());
+    ASSERT_TRUE(graph.has_value());
+    std::vector<uint32_t> const below = graph->Nearest3d({0, 0, -58}, 10.0f, 4);
+    ASSERT_EQ(below.size(), 1u);
+    EXPECT_EQ(below[0], 0u);
+}
+
+TEST(UndergroundPlan, WalksToTheExitThatLeavesTheLeastToGo)
+{
+    // A corridor 0 - 1 - 2 - 3 along x, with exits at both ends; the goal lies far to the east.
+    std::vector<RoadNode> const nodes = {{0, 0, -50}, {30, 0, -50}, {60, 0, -50}, {90, 0, -50}};
+    std::vector<RoadEdge> const edges = {{0, 1, 1}, {1, 2, 1}, {2, 3, 1}};
+    std::vector<uint8_t> const bytes = Encode(nodes, edges);
+    std::optional<RoadGraph> const graph = RoadGraph::Parse(bytes.data(), bytes.size());
+    ASSERT_TRUE(graph.has_value());
+    UndergroundPlan const plan = graph->PlanToExit({28, 0, -50}, {500, 0, 0}, {0, 3}, 40.0f);
+    ASSERT_EQ(plan.nodes.size(), 3u);
+    EXPECT_EQ(plan.nodes.front(), 1u);
+    EXPECT_EQ(plan.nodes.back(), 3u);
+    EXPECT_NEAR(plan.walkYards, 62.0f, 0.1f);
+}
+
+TEST(UndergroundPlan, NothingWhenNoNodeIsNearOrNoExitIsReached)
+{
+    std::vector<RoadNode> const nodes = {{0, 0, -50}, {30, 0, -50}, {500, 0, -50}};
+    std::vector<RoadEdge> const edges = {{0, 1, 1}};
+    std::vector<uint8_t> const bytes = Encode(nodes, edges);
+    std::optional<RoadGraph> const graph = RoadGraph::Parse(bytes.data(), bytes.size());
+    ASSERT_TRUE(graph.has_value());
+    EXPECT_TRUE(graph->PlanToExit({0, 0, 40}, {500, 0, 0}, {1}, 40.0f).nodes.empty());
+    EXPECT_TRUE(graph->PlanToExit({0, 0, -50}, {500, 0, 0}, {2}, 40.0f).nodes.empty());
+    EXPECT_TRUE(graph->PlanToExit({0, 0, -50}, {500, 0, 0}, {}, 40.0f).nodes.empty());
+}

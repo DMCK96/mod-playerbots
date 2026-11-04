@@ -30,6 +30,7 @@
 #include <cmath>
 #include <ctime>
 #include <fstream>
+#include <sstream>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -939,6 +940,48 @@ std::shared_ptr<RoadRules::RoadGraph const> RoadGraphFor(uint32 mapId)
     }
     graphs[mapId] = graph;
     return graph;
+}
+
+std::shared_ptr<UndergroundData const> UndergroundFor(uint32 mapId)
+{
+    static std::mutex lock;
+    static std::unordered_map<uint32, std::shared_ptr<UndergroundData const>> maps;
+    std::lock_guard<std::mutex> guard(lock);
+    auto const cached = maps.find(mapId);
+    if (cached != maps.end())
+        return cached->second;
+
+    std::shared_ptr<UndergroundData const> data;
+    std::string const base = Acore::StringFormat("{}roads/{:03}", sWorld->GetDataPath(), mapId);
+    std::ifstream file(base + ".under", std::ios::binary);
+    if (file)
+    {
+        file.seekg(0, std::ios::end);
+        std::vector<uint8_t> bytes(size_t(std::max<std::streamoff>(file.tellg(), 0)));
+        file.seekg(0, std::ios::beg);
+        file.read(reinterpret_cast<char*>(bytes.data()), std::streamsize(bytes.size()));
+        std::ifstream list(base + ".exits");
+        std::stringstream text;
+        text << list.rdbuf();
+        if (std::optional<RoadRules::RoadGraph> parsed = RoadRules::RoadGraph::Parse(bytes.data(), bytes.size()))
+        {
+            auto loaded = std::make_shared<UndergroundData>(UndergroundData{std::move(*parsed), {}});
+            for (RoadRules::Point const& point : RoadRules::ParseExitList(text.str()))
+            {
+                std::vector<uint32_t> const closest = loaded->graph.Nearest3d(point, 3.0f, 1);
+                if (!closest.empty())
+                    loaded->exits.push_back(closest.front());
+            }
+            LOG_INFO("playerbots", "coa movement: underground graph for map {}: {} nodes, {} edges, {} exits", mapId,
+                     loaded->graph.NodeCount(), loaded->graph.EdgeCount(), loaded->exits.size());
+            data = std::move(loaded);
+        }
+        else
+            LOG_ERROR("playerbots", "coa movement: underground graph {}.under is damaged or of another version, ignored",
+                      base);
+    }
+    maps[mapId] = data;
+    return data;
 }
 
 namespace

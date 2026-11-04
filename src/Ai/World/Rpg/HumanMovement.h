@@ -137,6 +137,15 @@ void SpendPauseYards(Player const* bot);
 
 // Road graph of a map from DataDir/roads/<map>.roads, loaded on first use; null when the map has none.
 std::shared_ptr<RoadRules::RoadGraph const> RoadGraphFor(uint32 mapId);
+
+// The underground graph of a map (`<DataDir>/roads/<map>.under`, made by tools/roads/build_underground.py) and the nodes that
+// are exits (the points listed in `<map>.exits`); null when the map has none.
+struct UndergroundData
+{
+    RoadRules::RoadGraph graph;
+    std::vector<uint32_t> exits;
+};
+std::shared_ptr<UndergroundData const> UndergroundFor(uint32 mapId);
 // Edges bots failed to walk, skipped by road plans on that map for RoadRules::BlockMs.
 void BlockRoadEdge(uint32 mapId, uint32_t edge);
 std::unordered_set<uint32_t> BlockedRoadEdges(uint32 mapId);

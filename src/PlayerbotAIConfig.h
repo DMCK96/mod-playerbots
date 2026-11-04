@@ -433,6 +433,7 @@ public:
     bool coaTargetSpread;
     uint32 coaRoutePauseYards;
     uint32 coaRoadShare;
+    bool coaUndergroundExit;
     float coaRoadMinTrip;
     bool coaBodyPullGuard;
     bool coaKeepTargetOutOfSight;
