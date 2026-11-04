@@ -1724,6 +1724,13 @@ AiPlayerbot.CoaPolish = 1
 # Default: 1 (enabled)
 AiPlayerbot.CoaSmoothPaths = 1
 
+# Every walking path a bot launches (RPG, follow, chase, group, any future behaviour) has its corners replaced
+# by short arcs of 1.5-4 yards radius (a fixed radius per bot), so heading changes are gradual instead of
+# instant. An arc that would leave the navmesh is shrunk twice, then dropped. Flying, swimming, vehicle,
+# transport and waypoint movement are untouched. 0 = sharp corners.
+# Default: 1 (enabled)
+AiPlayerbot.CoaCornerRounding = 1
+
 # Bots choose which NPC, inn, bank or grind area to visit by how busy it is and where they have just
 # been, instead of at random among the nearest few. Auction houses, banks, inns, flight masters and
 # battlemasters keep their crowds; vendors, trainers, quest givers and grind areas spread bots out.

@@ -428,6 +428,7 @@ public:
     bool coaDwell;
     bool coaPolish;
     bool coaSmoothPaths;
+    bool coaCornerRounding;
     uint32 coaMovementMetricsSeconds;
     bool coaTargetSpread;
     uint32 coaRoutePauseYards;

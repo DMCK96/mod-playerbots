@@ -788,6 +788,7 @@ bool PlayerbotAIConfig::Initialize()
     coaDwell = sConfigMgr->GetOption<bool>("AiPlayerbot.CoaDwell", true, false);
     coaPolish = sConfigMgr->GetOption<bool>("AiPlayerbot.CoaPolish", true, false);
     coaSmoothPaths = sConfigMgr->GetOption<bool>("AiPlayerbot.CoaSmoothPaths", true, false);
+    coaCornerRounding = sConfigMgr->GetOption<bool>("AiPlayerbot.CoaCornerRounding", true, false);
     coaMovementMetricsSeconds = sConfigMgr->GetOption<uint32>("AiPlayerbot.CoaMovementMetricsSeconds", 60, false);
     coaTargetSpread = sConfigMgr->GetOption<bool>("AiPlayerbot.CoaTargetSpread", true, false);
     coaRoutePauseYards = sConfigMgr->GetOption<uint32>("AiPlayerbot.CoaRoutePauseYards", 400, false);

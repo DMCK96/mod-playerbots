@@ -659,6 +659,7 @@ public:
 void AddPlayerbotsSecureLoginScripts();
 void AddPlayerbotsSelfBotAfkScripts();
 
+void AddSC_coa_corner_rounding();
 void AddSC_MagtheridonBotScripts();
 void AddSC_TempestKeepBotScripts();
 void AddSC_HyjalSummitBotScripts();
@@ -694,4 +695,5 @@ void AddPlayerbotsScripts()
     AddSC_coa_status_file();
     AddSC_coa_arena_ready();
     AddSC_coa_lfg();
+    AddSC_coa_corner_rounding();
 }

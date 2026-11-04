@@ -91,6 +91,9 @@ bool Humanize(Player* bot, Movement::PointsArray const& in, Movement::PointsArra
 // The nearest point of the navmesh bots walk on, within `horizontal` yards across and `vertical` up or down.
 bool NearestMeshPoint(Map* map, float x, float y, float z, float horizontal, float vertical, G3D::Vector3& out);
 bool HasMeshTile(Map* map, float x, float y, float z);
+// True when a navmesh ray from `from` to `to` stays on the mesh bots walk on: both ends snap to it (1 yard across,
+// 2.5 up or down) within 1.2 yards of their own height, and no wall stands between them.
+bool MeshChordClear(Map* map, G3D::Vector3 const& from, G3D::Vector3 const& to);
 // Ground height for a point known only by x and y (quest areas): the terrain when the navmesh lies on it,
 // otherwise the topmost surface as before.
 float PoiHeight(Map* map, float x, float y);
@@ -125,6 +128,7 @@ void NoteDwell(uint32 ms);
 void NoteHop();
 void NoteEmote();
 void NoteSmoothLaunch(bool smooth);
+void NoteCornersRounded(size_t rounded, size_t sharp);
 void NotePause();
 void SetOnlineBots(uint32 count);
 // Yards the bot has walked since its last pause roll, counted between successive calls.
@@ -156,6 +160,7 @@ private:
 constexpr uint32 CostSlotPick = 0;
 constexpr uint32 CostSlotLaunch = 1;
 constexpr uint32 CostSlotChoose = 2;
+constexpr uint32 CostSlotRound = 3;
 }  // namespace HumanMovement
 
 #endif

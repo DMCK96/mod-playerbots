@@ -53,6 +53,8 @@ constexpr float LiveRadiusPlace = 20.0f;
 constexpr float LiveScanMaxDistance = 300.0f;
 constexpr float MaxSegmentTurnCos = 0.26f;  // cos(75 degrees): sharper turns stay on the stock path
 constexpr size_t MinCurvePoints = 5;
+constexpr float MaxChordHeightError = 1.2f;
+constexpr int ChordPolyCap = 16;
 constexpr float LaneTaperYards = 8.0f;
 constexpr float SpotMeshHorizontal = 1.5f;
 constexpr float SpotMeshVertical = 2.5f;
@@ -242,7 +244,10 @@ struct Counters
     std::atomic<uint64> roadWaypoints{0};
     std::atomic<uint64> roadAbandons{0};
     std::atomic<uint64> roadMicros{0};
-    std::atomic<uint64> micros[3]{};
+    std::atomic<uint64> micros[4]{};
+    std::atomic<uint64> shapings{0};
+    std::atomic<uint64> cornersRounded{0};
+    std::atomic<uint64> cornersSharp{0};
     std::atomic<uint64> straight[4]{};
     std::atomic<uint64> snaps{0};
     std::atomic<uint64> snapCentiyards{0};
@@ -345,6 +350,8 @@ void MaybeLog()
     uint64 const targets = counters.targets.exchange(0);
     uint64 const repeats = counters.targetRepeats.exchange(0);
     uint64 const chooseMicros = counters.micros[CostSlotChoose].exchange(0);
+    uint64 const shapings = counters.shapings.exchange(0);
+    uint64 const shapeMicros = counters.micros[CostSlotRound].exchange(0);
     double occupancy[3];
     for (uint32 kind = 0; kind < 3; ++kind)
     {
@@ -362,7 +369,7 @@ void MaybeLog()
              "dwells {} (avg {:.1f}s), hops {}, emotes {}, cost: pick {:.1f}us avg, launch {:.1f}us avg, "
              "targets {} (repeat {:.1f}%, live scans {}, occupancy hub {:.1f} spread {:.1f} place {:.1f}, "
              "choose {:.1f}us avg), pauses {}, road plans {} (used {}, no graph {}, no road {}, too long {}), "
-             "waypoints {}, abandoned {}, plan {:.1f}us avg",
+             "waypoints {}, abandoned {}, plan {:.1f}us avg, corners rounded {} sharp {} (shaping {:.1f}us avg)",
              interval, counters.onlineBots.load(std::memory_order_relaxed), picks, overlaps,
              picks ? 100.0 * double(overlaps) / double(picks) : 0.0,
              counters.retries.exchange(0), counters.fallbacks.exchange(0), smooth, plain, dwells,
@@ -373,7 +380,9 @@ void MaybeLog()
              occupancy[1], occupancy[2], targets ? double(chooseMicros) / double(targets) : 0.0,
              counters.pauses.exchange(0), roadPlans, counters.roadUsed.exchange(0), roadNoGraph,
              counters.roadNoRoad.exchange(0), counters.roadTooLong.exchange(0), counters.roadWaypoints.exchange(0),
-             counters.roadAbandons.exchange(0), roadSearches ? double(roadMicros) / double(roadSearches) : 0.0);
+             counters.roadAbandons.exchange(0), roadSearches ? double(roadMicros) / double(roadSearches) : 0.0,
+             counters.cornersRounded.exchange(0), counters.cornersSharp.exchange(0),
+             shapings ? double(shapeMicros) / double(shapings) : 0.0);
     LogPathing(interval);
 }
 
@@ -721,6 +730,33 @@ bool NearestMeshPoint(Map* map, float x, float y, float z, float horizontal, flo
     return true;
 }
 
+bool MeshChordClear(Map* map, G3D::Vector3 const& from, G3D::Vector3 const& to)
+{
+    dtNavMeshQuery const* query = map->GetMapCollisionData().GetMMapData().GetNavMeshQuery();
+    if (!query)
+        return false;
+    float const extents[3] = {1.0f, 2.5f, 1.0f};
+    float const start[3] = {from.y, from.z, from.x};
+    float const end[3] = {to.y, to.z, to.x};
+    dtPolyRef startRef = 0;
+    dtPolyRef endRef = 0;
+    float startOn[3] = {0.0f, 0.0f, 0.0f};
+    float endOn[3] = {0.0f, 0.0f, 0.0f};
+    if (dtStatusFailed(query->findNearestPoly(start, extents, &BotMeshFilter(), &startRef, startOn)) || !startRef ||
+        dtStatusFailed(query->findNearestPoly(end, extents, &BotMeshFilter(), &endRef, endOn)) || !endRef)
+        return false;
+    if (std::fabs(startOn[1] - from.z) > MaxChordHeightError || std::fabs(endOn[1] - to.z) > MaxChordHeightError)
+        return false;
+    float t = 0.0f;
+    float hitNormal[3] = {0.0f, 0.0f, 0.0f};
+    dtPolyRef visited[ChordPolyCap];
+    int visitedCount = 0;
+    if (dtStatusFailed(query->raycast(startRef, startOn, endOn, &BotMeshFilter(), &t, hitNormal, visited,
+                                      &visitedCount, ChordPolyCap)))
+        return false;
+    return t > 1.0f;
+}
+
 bool HasMeshTile(Map* map, float x, float y, float z)
 {
     dtNavMesh const* mesh = map->GetMapCollisionData().GetMMapData().GetNavMesh();
@@ -824,6 +860,14 @@ void NoteEmote()
 void NoteSmoothLaunch(bool smooth)
 {
     (smooth ? counters.smooth : counters.plain).fetch_add(1, std::memory_order_relaxed);
+    MaybeLog();
+}
+
+void NoteCornersRounded(size_t rounded, size_t sharp)
+{
+    counters.shapings.fetch_add(1, std::memory_order_relaxed);
+    counters.cornersRounded.fetch_add(rounded, std::memory_order_relaxed);
+    counters.cornersSharp.fetch_add(sharp, std::memory_order_relaxed);
     MaybeLog();
 }
 
