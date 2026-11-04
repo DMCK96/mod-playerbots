@@ -414,8 +414,11 @@ WorldPosition NewRpgBaseAction::RoadLegTarget(WorldPosition const& dest)
     float sx = shifted.x;
     float sy = shifted.y;
     float sz = shifted.z;
+    // The collision check probes the height again at the shifted point; a sideways step of a yard or two that lands on a
+    // surface well above the one chosen for the waypoint (a stack of props beside the road) is not the road: keep the waypoint.
     if (bot->GetMap()->CheckCollisionAndGetValidCoords(bot, x, y, z, sx, sy, sz) &&
-        !bot->GetMap()->IsInWater(bot->GetPhaseMask(), sx, sy, sz, bot->GetCollisionHeight()))
+        !bot->GetMap()->IsInWater(bot->GetPhaseMask(), sx, sy, sz, bot->GetCollisionHeight()) &&
+        std::fabs(sz - z) <= RoadProbeRiseYards)
         return WorldPosition(bot->GetMapId(), sx, sy, sz);
     return WorldPosition(bot->GetMapId(), x, y, z);
 }
